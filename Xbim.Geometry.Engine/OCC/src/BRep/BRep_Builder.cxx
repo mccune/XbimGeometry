@@ -30,6 +30,7 @@
 
 #include <TopoDS.hxx>
 #include <TopoDS_Iterator.hxx>
+#include <TopoDS_LockedShape.hxx>
 
 #include <Precision.hxx>
 
@@ -234,11 +235,20 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
   Handle(BRep_CurveRepresentation) cr;
   Handle(BRep_GCurve) GC;
   Standard_Real f = 0.,l = 0.;
+  Standard_Boolean rangeFound = Standard_False;
 
   while (itcr.More()) {
     GC = Handle(BRep_GCurve)::DownCast(itcr.Value());
     if ( !GC.IsNull() ) {
-      GC->Range(f,l);
+      if (GC->IsCurve3D()) {
+        GC->Range(f,l);
+        Standard_Boolean undefined = (Precision::IsPositiveInfinite(l) ||
+                                      Precision::IsNegativeInfinite(f));
+          
+        if (!undefined) {
+          rangeFound = Standard_True;
+        }
+      }
       Standard_Boolean iscos = GC->IsCurveOnSurface(S,L);
       if (iscos) break;
     }
@@ -256,7 +266,7 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
     Handle(BRep_CurveOnClosedSurface) COS =
       new BRep_CurveOnClosedSurface(C1,C2,S,L,GeomAbs_C0);
     // test if there is already a range
-    if (!GC.IsNull()) {
+    if (rangeFound) {
       COS->SetRange(f,l);
     }
     lcr.Append(COS);
@@ -281,11 +291,20 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
   Handle(BRep_CurveRepresentation) cr;
   Handle(BRep_GCurve) GC;
   Standard_Real f = 0.,l = 0.;
+  Standard_Boolean rangeFound = Standard_False;
 
   while (itcr.More()) {
     GC = Handle(BRep_GCurve)::DownCast(itcr.Value());
     if ( !GC.IsNull() ) {
-      GC->Range(f,l);
+      if (GC->IsCurve3D()) {
+        GC->Range(f,l);
+        Standard_Boolean undefined = (Precision::IsPositiveInfinite(l) ||
+                                      Precision::IsNegativeInfinite(f));
+          
+        if (!undefined) {
+          rangeFound = Standard_True;
+        }
+      }
       Standard_Boolean iscos = GC->IsCurveOnSurface(S,L);
       if (iscos) break;
     }
@@ -303,7 +322,7 @@ static void UpdateCurves(BRep_ListOfCurveRepresentation& lcr,
     Handle(BRep_CurveOnClosedSurface) COS =
       new BRep_CurveOnClosedSurface(C1,C2,S,L,GeomAbs_C0);
     // test if there is already a range
-    if (!GC.IsNull()) {
+    if (rangeFound) {
       COS->SetRange(f,l);
     }
     COS->SetUVPoints2(Pf,Pl);
@@ -424,6 +443,10 @@ void  BRep_Builder::MakeFace(TopoDS_Face& F,
                              const Standard_Real Tol) const 
 {
   Handle(BRep_TFace) TF = new BRep_TFace();
+  if(!F.IsNull() && F.Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::MakeFace");
+  }
   TF->Surface(S);
   TF->Tolerance(Tol);
   MakeShape(F,TF);
@@ -439,6 +462,10 @@ void  BRep_Builder::MakeFace(TopoDS_Face&                      F,
                              const Handle(Poly_Triangulation)& T) const
 {
   Handle(BRep_TFace) TF = new BRep_TFace();
+  if(!F.IsNull() && F.Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::MakeFace");
+  }
   TF->Triangulation(T);
   MakeShape(F, TF);
 }
@@ -455,6 +482,10 @@ void  BRep_Builder::MakeFace(TopoDS_Face& F,
                              const Standard_Real Tol) const 
 {
   Handle(BRep_TFace) TF = new BRep_TFace();
+  if(!F.IsNull() && F.Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::MakeFace");
+  }
   TF->Surface(S);
   TF->Tolerance(Tol);
   TF->Location(L);
@@ -473,6 +504,10 @@ void  BRep_Builder::UpdateFace(const TopoDS_Face& F,
                                const Standard_Real Tol) const
 {
   const Handle(BRep_TFace)& TF = *((Handle(BRep_TFace)*) &F.TShape());
+  if(TF->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::UpdateFace");
+  }
   TF->Surface(S);
   TF->Tolerance(Tol);
   TF->Location(L.Predivided(F.Location()));
@@ -488,7 +523,12 @@ void  BRep_Builder::UpdateFace(const TopoDS_Face& F,
 void  BRep_Builder::UpdateFace(const TopoDS_Face& F,
                                const Handle(Poly_Triangulation)& T) const
 {
-  (*((Handle(BRep_TFace)*) &F.TShape()))->Triangulation(T);
+  const Handle(BRep_TFace)& TF = *((Handle(BRep_TFace)*) &F.TShape());
+  if(TF->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::UpdateFace");
+  }
+  TF->Triangulation(T);
   F.TShape()->Modified(Standard_True);
 }
 
@@ -501,7 +541,12 @@ void  BRep_Builder::UpdateFace(const TopoDS_Face& F,
 void  BRep_Builder::UpdateFace(const TopoDS_Face& F,
                                const Standard_Real Tol) const 
 {
-  (*((Handle(BRep_TFace)*) &F.TShape()))->Tolerance(Tol);
+  const Handle(BRep_TFace)& TF = *((Handle(BRep_TFace)*) &F.TShape());
+  if(TF->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::UpdateFace");
+  }
+  TF->Tolerance(Tol);
   F.TShape()->Modified(Standard_True);
 }
 
@@ -514,7 +559,12 @@ void  BRep_Builder::UpdateFace(const TopoDS_Face& F,
 void  BRep_Builder::NaturalRestriction(const TopoDS_Face& F,
                                        const Standard_Boolean N) const 
 {
-  (*((Handle(BRep_TFace)*) &F.TShape()))->NaturalRestriction(N);
+  const Handle(BRep_TFace)& TF = (*((Handle(BRep_TFace)*) &F.TShape()));
+  if(TF->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::NaturalRestriction");
+  }
+  TF->NaturalRestriction(N);
   F.TShape()->Modified(Standard_True);
 }
 
@@ -527,7 +577,10 @@ void  BRep_Builder::NaturalRestriction(const TopoDS_Face& F,
 void  BRep_Builder::MakeEdge(TopoDS_Edge& E) const
 {
   Handle(BRep_TEdge) TE = new BRep_TEdge();
-  TE->Closed(Standard_False);
+  if(!E.IsNull() && E.Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::MakeEdge");
+  }
   MakeShape(E,TE);
 }
 
@@ -543,10 +596,13 @@ void  BRep_Builder::UpdateEdge(const TopoDS_Edge& E,
                                const Standard_Real Tol) const
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
+  if(TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::UpdateEdge");
+  }
   const TopLoc_Location l = L.Predivided(E.Location());
 
   UpdateCurves(TE->ChangeCurves(),C,l);
-  if (!C.IsNull()) TE->Closed(C->IsClosed());
 
   TE->UpdateTolerance(Tol);
   TE->Modified(Standard_True);
@@ -565,6 +621,10 @@ void  BRep_Builder::UpdateEdge(const TopoDS_Edge& E,
                                const Standard_Real Tol) const
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
+  if(TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::UpdateEdge");
+  }
   const TopLoc_Location l = L.Predivided(E.Location());
 
   UpdateCurves(TE->ChangeCurves(),C,S,l);
@@ -588,6 +648,10 @@ void  BRep_Builder::UpdateEdge(const TopoDS_Edge& E,
                                const gp_Pnt2d& Pl) const
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
+  if(TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::UpdateEdge");
+  }
   const TopLoc_Location l = L.Predivided(E.Location());
 
   UpdateCurves(TE->ChangeCurves(),C,S,l,Pf,Pl);
@@ -610,11 +674,13 @@ void  BRep_Builder::UpdateEdge(const TopoDS_Edge& E,
                                const Standard_Real Tol) const
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
+  if(TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::UpdateEdge");
+  }
   const TopLoc_Location l = L.Predivided(E.Location());
 
   UpdateCurves(TE->ChangeCurves(),C1,C2,S,l);
-  if (!C1.IsNull() && !C2.IsNull()) 
-    TE->Closed(C1->IsClosed() && C2->IsClosed());
 
   TE->UpdateTolerance(Tol);
   TE->Modified(Standard_True);
@@ -636,12 +702,14 @@ void  BRep_Builder::UpdateEdge(const TopoDS_Edge& E,
                                const gp_Pnt2d& Pl) const
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
+  if(TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::UpdateEdge");
+  }
   const TopLoc_Location l = L.Predivided(E.Location());
 
   UpdateCurves(TE->ChangeCurves(),C1,C2,S,l,Pf,Pl);
-  if (!C1.IsNull() && !C2.IsNull()) 
-    TE->Closed(C1->IsClosed() && C2->IsClosed());
-  
+
   TE->UpdateTolerance(Tol);
   TE->Modified(Standard_True);
 }
@@ -657,7 +725,10 @@ void  BRep_Builder::UpdateEdge(const TopoDS_Edge& E,
                                const TopLoc_Location& L) const
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
-
+  if(TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::UpdateEdge");
+  }
   BRep_ListOfCurveRepresentation& lcr = TE->ChangeCurves();
   BRep_ListIteratorOfListOfCurveRepresentation itcr(lcr);
 
@@ -694,6 +765,10 @@ void  BRep_Builder::UpdateEdge(const TopoDS_Edge& E,
                                const TopLoc_Location& L) const
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
+  if(TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::UpdateEdge");
+  }
   const TopLoc_Location l = L.Predivided(E.Location());
 
   Standard_Boolean isModified = Standard_False;
@@ -705,14 +780,14 @@ void  BRep_Builder::UpdateEdge(const TopoDS_Edge& E,
   while (itcr.More())
   {
     if (itcr.Value()->IsPolygonOnTriangulation(T,l))
-	{
+    {
       // cr is used to keep a reference on the curve representation
       // this avoid deleting it as its content may be referenced by T
       cr = itcr.Value();
       lcr.Remove(itcr);
       isModified = Standard_True;
       break;
-	}
+    }
     itcr.Next();
   }
 
@@ -741,6 +816,10 @@ void  BRep_Builder::UpdateEdge(const TopoDS_Edge& E,
                                const TopLoc_Location& L) const
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
+  if(TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::UpdateEdge");
+  }
   const TopLoc_Location l = L.Predivided(E.Location());
 
   Standard_Boolean isModified = Standard_False;
@@ -800,6 +879,10 @@ void  BRep_Builder::UpdateEdge(const TopoDS_Edge&            E,
                                const TopLoc_Location&        L) const
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
+  if(TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::UpdateEdge");
+  }
   TopLoc_Location l = L.Predivided(E.Location());
 
   BRep_ListOfCurveRepresentation& lcr = TE->ChangeCurves();
@@ -854,6 +937,10 @@ void  BRep_Builder::UpdateEdge(const TopoDS_Edge&            E,
                                const TopLoc_Location&        L) const
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
+  if(TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::UpdateEdge");
+  }
   TopLoc_Location l = L.Predivided(E.Location());
   
   BRep_ListOfCurveRepresentation& lcr = TE->ChangeCurves();
@@ -890,6 +977,10 @@ void  BRep_Builder::UpdateEdge(const TopoDS_Edge& E,
                                const Standard_Real Tol) const
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
+  if(TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::UpdateEdge");
+  }
   TE->UpdateTolerance(Tol);
   TE->Modified(Standard_True);
 }
@@ -924,7 +1015,10 @@ void  BRep_Builder::Continuity(const TopoDS_Edge& E,
                                const GeomAbs_Shape C)const 
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
-
+  if(TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::Continuity");
+  }
   const TopLoc_Location l1 = L1.Predivided(E.Location());
   const TopLoc_Location l2 = L2.Predivided(E.Location());
 
@@ -942,6 +1036,10 @@ void  BRep_Builder::SameParameter(const TopoDS_Edge& E,
                                   const Standard_Boolean S) const 
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
+  if(TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::SameParameter");
+  }
   TE->SameParameter(S);
   TE->Modified(Standard_True);
 }
@@ -955,6 +1053,10 @@ void  BRep_Builder::SameRange(const TopoDS_Edge& E,
                               const Standard_Boolean S) const 
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
+  if(TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::SameRange");
+  }
   TE->SameRange(S);
   TE->Modified(Standard_True);
 }
@@ -968,6 +1070,10 @@ void  BRep_Builder::Degenerated(const TopoDS_Edge& E,
                                 const Standard_Boolean D) const 
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
+  if(TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::Degenerated");
+  }
   TE->Degenerated(D);
   if (D) {
     // set a null 3d curve
@@ -989,30 +1095,18 @@ void  BRep_Builder::Range(const TopoDS_Edge&  E,
 {
   //  set the range to all the representations if Only3d=FALSE
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
-  
+  if(TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::Range");
+  }
   BRep_ListOfCurveRepresentation& lcr = TE->ChangeCurves();
   BRep_ListIteratorOfListOfCurveRepresentation itcr(lcr);
   Handle(BRep_GCurve) GC;
   
   while (itcr.More()) {
     GC = Handle(BRep_GCurve)::DownCast(itcr.Value());
-    if (!GC.IsNull()) {
-      if (!Only3d || GC->IsCurve3D())
-	GC->SetRange(First,Last);
-      if (GC->IsCurve3D()) {
-        // Set the closedness flag to the correct value.
-        Handle(Geom_Curve) C = GC->Curve3D();
-        
-        //fixing a bug PRO18577 to avoid infinite values of First and Last 
-        if ( !C.IsNull() && 
-            !Precision::IsNegativeInfinite(First) && 
-            !Precision::IsPositiveInfinite(Last) )   {
-          Standard_Boolean closed = 
-            C->Value(First).IsEqual(C->Value(Last),BRep_Tool::Tolerance(E));
-          TE->Closed(closed);
-        }
-      }
-    }
+    if (!GC.IsNull() && (!Only3d || GC->IsCurve3D()))
+      GC->SetRange(First,Last);
     itcr.Next();
   }
   
@@ -1032,6 +1126,10 @@ void  BRep_Builder::Range(const TopoDS_Edge& E,
                           const Standard_Real Last) const
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
+  if(TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::Range");
+  }
   const TopLoc_Location l = L.Predivided(E.Location());
 
   BRep_ListOfCurveRepresentation& lcr = TE->ChangeCurves();
@@ -1040,20 +1138,10 @@ void  BRep_Builder::Range(const TopoDS_Edge& E,
 
   while (itcr.More()) {
     GC = Handle(BRep_GCurve)::DownCast(itcr.Value());
-    if (!GC.IsNull()) {
-      if (GC->IsCurveOnSurface(S,l)) {
-        GC->SetRange(First,Last);
-
-        // Set the closedness flag to the correct value.
-        Handle(Geom2d_Curve) PC = GC->PCurve();
-        gp_Pnt2d P1 = PC->Value(First);
-        gp_Pnt2d P2 = PC->Value(Last);
-        gp_Pnt   PP1 = S->Value(P1.X(),P1.Y());
-        gp_Pnt   PP2 = S->Value(P2.X(),P2.Y());
-        Standard_Boolean closed = PP1.IsEqual(PP2,BRep_Tool::Tolerance(E));
-        TE->Closed(closed);
-        break;
-      }
+    if (!GC.IsNull() && GC->IsCurveOnSurface(S,l))
+    {
+      GC->SetRange(First,Last);
+      break;
     }
     itcr.Next();
   }
@@ -1074,9 +1162,12 @@ void  BRep_Builder::Transfert(const TopoDS_Edge& Ein,
                               const TopoDS_Edge& Eout) const
 {
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &Ein.TShape());
-
+  if(TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::Transfert");
+  }
   const Standard_Real tol = TE->Tolerance();
-  
+
   BRep_ListOfCurveRepresentation& lcr = TE->ChangeCurves();
   BRep_ListIteratorOfListOfCurveRepresentation itcr(lcr);
   
@@ -1123,7 +1214,10 @@ void  BRep_Builder::UpdateVertex(const TopoDS_Vertex& V,
                                  const Standard_Real Tol) const 
 {
   const Handle(BRep_TVertex)& TV = *((Handle(BRep_TVertex)*) &V.TShape());
-
+  if(TV->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::UpdateVertex");
+  }
   TV->Pnt(P.Transformed(V.Location().Inverted().Transformation()));
   TV->UpdateTolerance(Tol);
   TV->Modified(Standard_True);
@@ -1146,6 +1240,11 @@ void  BRep_Builder::UpdateVertex(const TopoDS_Vertex& V,
   
   const Handle(BRep_TVertex)& TV = *((Handle(BRep_TVertex)*) &V.TShape());
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
+
+  if(TV->Locked() || TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::UpdateVertex");
+  }
 
   TopLoc_Location L = E.Location().Predivided(V.Location());
 
@@ -1228,6 +1327,10 @@ void  BRep_Builder::UpdateVertex(const TopoDS_Vertex& V,
   const Handle(BRep_TVertex)& TV = *((Handle(BRep_TVertex)*) &V.TShape());
   const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
   
+  if(TV->Locked() || TE->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::UpdateVertex");
+  }
   
   // Search the vertex in the edge
   TopAbs_Orientation ori = TopAbs_INTERNAL;
@@ -1295,6 +1398,11 @@ void  BRep_Builder::UpdateVertex(const TopoDS_Vertex& Ve,
 {
   const Handle(BRep_TVertex)& TV = *((Handle(BRep_TVertex)*) &Ve.TShape());
   
+  if(TV->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::UpdateVertex");
+  }
+  
   TopLoc_Location L;
   const Handle(Geom_Surface)& S = BRep_Tool::Surface(F,L);
   L = L.Predivided(Ve.Location());
@@ -1314,6 +1422,12 @@ void  BRep_Builder::UpdateVertex(const TopoDS_Vertex& V,
                                  const Standard_Real Tol) const
 {
   const Handle(BRep_TVertex)& TV = *((Handle(BRep_TVertex)*) &V.TShape());
+    
+  if(TV->Locked())
+  {
+    TopoDS_LockedShape::Raise("BRep_Builder::UpdateVertex");
+  }
+  
   TV->UpdateTolerance(Tol);
   TV->Modified(Standard_True);
 }

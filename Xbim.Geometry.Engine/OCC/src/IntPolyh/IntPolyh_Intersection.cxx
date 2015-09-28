@@ -24,19 +24,8 @@
 #include <IntPolyh_Couple.hxx>
 #include <IntPolyh_Triangle.hxx>
 
-#ifdef DEB
-  # define MYDEBUG DEB 
-#else
-  # define MYDEBUG 0
-#endif
-
 Standard_Integer MYDISPLAY = 0;
 Standard_Integer MYPRINT   = 0;
-
-# if MYDEBUG
-//  # include "visudebug.hxx"
-# endif
-
 
 IntPolyh_Intersection::IntPolyh_Intersection(const Handle(Adaptor3d_HSurface)& S1,
 					     const Handle(Adaptor3d_HSurface)& S2)
@@ -243,7 +232,7 @@ void IntPolyh_Intersection::GetTangentZonePoint(const Standard_Integer Indexz,
   const IntPolyh_StartPoint   &sp=TTangentZones[Indexz-1];
   x=sp.X();
   y=sp.Y();
-  z=sp.Y();
+  z=sp.Z();
   u1=sp.U1();
   v1=sp.V1();
   u2=sp.U2();

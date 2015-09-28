@@ -73,7 +73,14 @@
 #include <GeomAPI_ProjectPointOnCurve.hxx>
 #include <GeomLib.hxx>
 
-#ifdef DEB
+#include <TopTools_IndexedMapOfShape.hxx>
+#include <BRepLib_MakeWire.hxx>
+#include <gce_MakePln.hxx>
+#include <ShapeFix_Shape.hxx>
+#include <GProp_GProps.hxx>
+#include <BRepGProp.hxx>
+
+#ifdef OCCT_DEBUG
 static Standard_Boolean Affich = Standard_False;
 static Standard_Integer NbOFFSET = 0;
 #endif
@@ -82,6 +89,32 @@ static Standard_Integer NbOFFSET = 0;
 #include <DBRep.hxx>
 #endif
 #include <stdio.h>
+
+
+static gp_Pnt GetFarestCorner(const TopoDS_Wire& aWire)
+{
+  TopTools_IndexedMapOfShape Vertices;
+  TopExp::MapShapes(aWire, TopAbs_VERTEX, Vertices);
+
+  Standard_Real MaxDist = 0.;
+  gp_Pnt thePoint;
+  for (Standard_Integer i = 1; i <= Vertices.Extent(); i++)
+    for (Standard_Integer j = 1; j <= Vertices.Extent(); j++)
+    {
+      const TopoDS_Vertex& V1 = TopoDS::Vertex(Vertices(i));
+      const TopoDS_Vertex& V2 = TopoDS::Vertex(Vertices(j));
+      gp_Pnt P1 = BRep_Tool::Pnt(V1);
+      gp_Pnt P2 = BRep_Tool::Pnt(V2);
+      Standard_Real aDist = P1.SquareDistance(P2);
+      if (aDist > MaxDist)
+      {
+        MaxDist = aDist;
+        thePoint = P1;
+      }
+    }
+
+  return thePoint;
+}
 
 //=======================================================================
 //function : UpdateEdge
@@ -144,43 +177,6 @@ static void UpdateEdge (const TopoDS_Edge& E,
   if (!BC1.IsNull()) NC1 = BC1->BasisCurve(); else NC1 = C1;
   if (!BC2.IsNull()) NC2 = BC2->BasisCurve(); else NC2 = C2;
   B.UpdateEdge(E,NC1,NC2,F,Tol);
-}
-
-//=======================================================================
-//function : Range3d
-//purpose  : Set the range only on the 3d curve 
-//           waitint that BRep_Builder does it !!
-//=======================================================================
-
-static void Range3d (const TopoDS_Edge&  E, 
-		     const Standard_Real First, 
-		     const Standard_Real Last) 
-{
-  //  set the range to all the representations
-  const Handle(BRep_TEdge)& TE = *((Handle(BRep_TEdge)*) &E.TShape());
-  
-  BRep_ListOfCurveRepresentation& lcr = TE->ChangeCurves();
-  BRep_ListIteratorOfListOfCurveRepresentation itcr(lcr);
-  Handle(BRep_GCurve) GC;
-  
-  while (itcr.More()) {
-    GC = Handle(BRep_GCurve)::DownCast(itcr.Value());
-    if (!GC.IsNull()) {
-      if (GC->IsCurve3D()) {
-	GC->SetRange(First,Last);
-	// Set the closedness flag to the correct value.
-	Handle(Geom_Curve) C = GC->Curve3D();
-	if ( !C.IsNull() ) {
-	  Standard_Boolean closed = 
-	    C->Value(First).IsEqual(C->Value(Last),BRep_Tool::Tolerance(E));
-	  TE->Closed(closed);
-	}
-      }
-    }
-    itcr.Next();
-  }
-
-  TE->Modified(Standard_True);
 }
 
 
@@ -524,8 +520,11 @@ void BRepOffset_Offset::Init(const TopoDS_Face&                  Face,
     BRepOffset::Surface( S, myOffset, myStatus);
 
   //processing offsets of faces with possible degenerated edges
+  Standard_Boolean UminDegen = Standard_False;
+  Standard_Boolean UmaxDegen = Standard_False;
   Standard_Boolean VminDegen = Standard_False;
   Standard_Boolean VmaxDegen = Standard_False;
+  Standard_Boolean UisoDegen = Standard_False;
   gp_Pnt MinApex, MaxApex;
   Standard_Boolean HasSingularity = Standard_False;
   Standard_Real uf1, uf2, vf1, vf2, fpar, lpar;
@@ -545,20 +544,39 @@ void BRepOffset_Offset::Init(const TopoDS_Face&                  Face,
       if (!DegEdges.IsEmpty())
 	{
 	  const Standard_Real TolApex = 1.e-5;
+          //define the iso of singularity (u or v)
+          const TopoDS_Edge& theDegEdge = TopoDS::Edge(DegEdges(1));
+          Handle(Geom2d_Curve) aCurve = BRep_Tool::CurveOnSurface(theDegEdge, Face, fpar, lpar);
+          gp_Pnt2d fp2d = aCurve->Value(fpar);
+          gp_Pnt2d lp2d = aCurve->Value(lpar);
+          if (Abs(fp2d.X() - lp2d.X()) <= Precision::PConfusion())
+            UisoDegen = Standard_True;
+
 	  if (DegEdges.Length() == 2)
 	    {
-	      VminDegen = Standard_True;
-	      VmaxDegen = Standard_True;
+              if (UisoDegen)
+              { UminDegen = Standard_True; UmaxDegen = Standard_True; }
+              else
+              { VminDegen = Standard_True; VmaxDegen = Standard_True; }
 	    }
 	  else //DegEdges.Length() == 1
 	    {
 	      const TopoDS_Edge& theDegEdge = TopoDS::Edge(DegEdges(1));
 	      Handle(Geom2d_Curve) aCurve = BRep_Tool::CurveOnSurface(theDegEdge, Face, fpar, lpar);
-	      gp_Pnt2d aPnt2d = aCurve->Value(fpar);
-	      if (Abs(aPnt2d.Y() - vf1) <= Precision::Confusion())
-		VminDegen = Standard_True;
-	      else
-		VmaxDegen = Standard_True;
+              if (UisoDegen)
+              {
+                if (Abs(fp2d.X() - uf1) <= Precision::Confusion())
+                  UminDegen = Standard_True;
+                else
+                  UmaxDegen = Standard_True;
+              }
+              else
+              {
+                if (Abs(fp2d.Y() - vf1) <= Precision::Confusion())
+                  VminDegen = Standard_True;
+                else
+                  VmaxDegen = Standard_True;
+              }
 	    }
 	  if (TheSurf->DynamicType() == STANDARD_TYPE(Geom_ConicalSurface))
 	    {
@@ -581,88 +599,166 @@ void BRepOffset_Offset::Init(const TopoDS_Face&                  Face,
 	    }
 	  else //TheSurf->DynamicType() == STANDARD_TYPE(Geom_OffsetSurface)
 	    {
+              if (UminDegen)
+              {
+                Handle(Geom_Curve) uiso = TheSurf->UIso( uf1 );
+                if (BRepOffset_Tool::Gabarit( uiso ) > TolApex)
+                {
+                  Handle(Geom_Surface) BasisSurf = (*((Handle(Geom_OffsetSurface)*)&TheSurf))->BasisSurface();
+                  gp_Pnt Papex, Pfirst, Pquart, Pmid;
+                  Papex = BasisSurf->Value( uf1, vf1 );
+                  Pfirst = TheSurf->Value( uf1, vf1 );
+                  Pquart = TheSurf->Value( uf1, 0.75*vf1+0.25*vf2 );
+                  Pmid   = TheSurf->Value( uf1, 0.5*(vf1+vf2) );
+                  gp_Vec DirApex = gp_Vec(Pfirst,Pquart) ^ gp_Vec(Pfirst,Pmid);
+                  Handle(Geom_Line) LineApex = new Geom_Line( Papex, DirApex );
+                  gp_Vec DirGeneratrix = BasisSurf->DN( uf1, vf1, 1, 0 );
+                  Handle(Geom_Line) LineGeneratrix = new Geom_Line( Pfirst, DirGeneratrix );
+                  GeomAPI_ExtremaCurveCurve theExtrema( LineGeneratrix, LineApex );
+                  gp_Pnt Pint1, Pint2;
+                  theExtrema.NearestPoints(Pint1, Pint2);
+                  Standard_Real length = Pfirst.Distance(Pint1);
+                  if (OffsetOutside)
+                  {
+                    TheSurf = new Geom_RectangularTrimmedSurface(TheSurf, uf1, uf2, vf1, vf2);
+                    GeomLib::ExtendSurfByLength(*((Handle(Geom_BoundedSurface)*)&TheSurf), length, 1,
+                                                Standard_True, Standard_False);
+                    Standard_Real u1, u2, v1, v2;
+                    TheSurf->Bounds( u1, u2, v1, v2 );
+                    MinApex = TheSurf->Value( u1, vf1 );
+                  }
+                  else
+                  {
+                    Handle(Geom_Curve) viso = TheSurf->VIso( vf1 );
+                    GeomAPI_ProjectPointOnCurve Projector( Pint1, viso );
+                    Standard_Real NewFirstU = Projector.LowerDistanceParameter();
+                    TheSurf = new Geom_RectangularTrimmedSurface(TheSurf, NewFirstU, uf2, vf1, vf2);
+                    MinApex = TheSurf->Value( NewFirstU, vf1 );
+                  }
+                  HasSingularity = Standard_True;
+                }
+              } //end of if (UminDegen)
+	      if (UmaxDegen)
+              {
+                Handle(Geom_Curve) uiso = TheSurf->UIso( uf2 );
+                if (BRepOffset_Tool::Gabarit( uiso ) > TolApex)
+                {
+                  Handle(Geom_Surface) BasisSurf = (*((Handle(Geom_OffsetSurface)*)&TheSurf))->BasisSurface();
+                  gp_Pnt Papex, Pfirst, Pquart, Pmid;
+                  Papex  = BasisSurf->Value( uf2, vf1 );
+                  Pfirst = TheSurf->Value( uf2, vf1 );
+                  Pquart = TheSurf->Value( uf2, 0.75*vf1+0.25*vf2 );
+                  Pmid   = TheSurf->Value( uf2, 0.5*(vf1+vf2) );
+                  gp_Vec DirApex = gp_Vec(Pfirst,Pquart) ^ gp_Vec(Pfirst,Pmid);
+                  Handle(Geom_Line) LineApex = new Geom_Line( Papex, DirApex );
+                  gp_Vec DirGeneratrix = BasisSurf->DN( uf2, vf1, 1, 0 );
+                  Handle(Geom_Line) LineGeneratrix = new Geom_Line( Pfirst, DirGeneratrix );
+                  GeomAPI_ExtremaCurveCurve theExtrema( LineGeneratrix, LineApex );
+                  gp_Pnt Pint1, Pint2;
+                  theExtrema.NearestPoints(Pint1, Pint2);
+                  Standard_Real length = Pfirst.Distance(Pint1);
+                  if (OffsetOutside)
+                  {
+                    TheSurf = new Geom_RectangularTrimmedSurface(TheSurf, uf1, uf2, vf1, vf2);
+                    GeomLib::ExtendSurfByLength(*((Handle(Geom_BoundedSurface)*)&TheSurf), length, 1,
+                                                Standard_True, Standard_True);
+                    Standard_Real u1, u2, v1, v2;
+                    TheSurf->Bounds( u1, u2, v1, v2 );
+                    MaxApex = TheSurf->Value( u2, vf1 );
+                  }
+                  else
+                  {
+                    Handle(Geom_Curve) viso = TheSurf->VIso( vf1 );
+                    GeomAPI_ProjectPointOnCurve Projector( Pint1, viso );
+                    Standard_Real NewLastU = Projector.LowerDistanceParameter();
+                    TheSurf = new Geom_RectangularTrimmedSurface(TheSurf, uf1, NewLastU, vf1, vf2);
+                    MaxApex = TheSurf->Value( NewLastU, vf1 );
+                  }
+                  HasSingularity = Standard_True;
+                }
+              } //end of if (UmaxDegen)
 	      if (VminDegen)
-		{
-		  Handle(Geom_Curve) viso = TheSurf->VIso( vf1 );
-		  if (BRepOffset_Tool::Gabarit( viso ) > TolApex)
-		    {
-		      Handle(Geom_Surface) BasisSurf = (*((Handle(Geom_OffsetSurface)*)&TheSurf))->BasisSurface();
-		      gp_Pnt Papex, Pfirst, Plast, Pmid;
-		      Papex = BasisSurf->Value( uf1, vf1 );
-		      Pfirst = TheSurf->Value( uf1, vf1 );
-		      Plast  = TheSurf->Value( uf2, vf1 );
-		      Pmid   = TheSurf->Value( (uf1+uf2)/2., vf1 );
-		      gp_Vec DirApex = gp_Vec(Pfirst,Pmid) ^ gp_Vec(Pfirst,Plast);
-		      Handle(Geom_Line) LineApex = new Geom_Line( Papex, DirApex );
-		      gp_Vec DirGeneratrix = BasisSurf->DN( uf1, vf1, 0, 1 );
-		      Handle(Geom_Line) LineGeneratrix = new Geom_Line( Pfirst, DirGeneratrix );
-		      GeomAPI_ExtremaCurveCurve theExtrema( LineGeneratrix, LineApex );
-		      gp_Pnt Pint1, Pint2;
-		      theExtrema.NearestPoints(Pint1, Pint2);
-		      Standard_Real length = Pfirst.Distance(Pint1);
-		      if (OffsetOutside)
-			{
-			  TheSurf = new Geom_RectangularTrimmedSurface(TheSurf, uf1, uf2, vf1, vf2);
-			  GeomLib::ExtendSurfByLength(*((Handle(Geom_BoundedSurface)*)&TheSurf), length, 1,
-						      Standard_False, Standard_False);
-			  Standard_Real u1, u2, v1, v2;
-			  TheSurf->Bounds( u1, u2, v1, v2 );
-			  MinApex = TheSurf->Value( uf1, v1 );
-			}
-		      else
-			{
-			  Handle(Geom_Curve) uiso = TheSurf->UIso( uf1 );
-			  GeomAPI_ProjectPointOnCurve Projector( Pint1, uiso );
-			  Standard_Real NewFirstV = Projector.LowerDistanceParameter();
-			  TheSurf = new Geom_RectangularTrimmedSurface(TheSurf, uf1, uf2, NewFirstV, vf2);
-			  MinApex = TheSurf->Value( uf1, NewFirstV );
-			  //TheSurf = new Geom_RectangularTrimmedSurface(TheSurf, uf1, uf2, vf1+length, vf2);
-			  //MinApex = TheSurf->Value( uf1, vf1+length );
-			}
-		      HasSingularity = Standard_True;
-		    }
-		} //end of if (VminDegen)
+              {
+                Handle(Geom_Curve) viso = TheSurf->VIso( vf1 );
+                if (BRepOffset_Tool::Gabarit( viso ) > TolApex)
+                {
+                  Handle(Geom_Surface) BasisSurf = (*((Handle(Geom_OffsetSurface)*)&TheSurf))->BasisSurface();
+                  gp_Pnt Papex, Pfirst, Pquart, Pmid;
+                  Papex = BasisSurf->Value( uf1, vf1 );
+                  Pfirst = TheSurf->Value( uf1, vf1 );
+                  Pquart = TheSurf->Value( 0.75*uf1+0.25*uf2, vf1 );
+                  Pmid   = TheSurf->Value( 0.5*(uf1+uf2), vf1 );
+                  gp_Vec DirApex = gp_Vec(Pfirst,Pquart) ^ gp_Vec(Pfirst,Pmid);
+                  Handle(Geom_Line) LineApex = new Geom_Line( Papex, DirApex );
+                  gp_Vec DirGeneratrix = BasisSurf->DN( uf1, vf1, 0, 1 );
+                  Handle(Geom_Line) LineGeneratrix = new Geom_Line( Pfirst, DirGeneratrix );
+                  GeomAPI_ExtremaCurveCurve theExtrema( LineGeneratrix, LineApex );
+                  gp_Pnt Pint1, Pint2;
+                  theExtrema.NearestPoints(Pint1, Pint2);
+                  Standard_Real length = Pfirst.Distance(Pint1);
+                  if (OffsetOutside)
+                  {
+                    TheSurf = new Geom_RectangularTrimmedSurface(TheSurf, uf1, uf2, vf1, vf2);
+                    GeomLib::ExtendSurfByLength(*((Handle(Geom_BoundedSurface)*)&TheSurf), length, 1,
+                                                Standard_False, Standard_False);
+                    Standard_Real u1, u2, v1, v2;
+                    TheSurf->Bounds( u1, u2, v1, v2 );
+                    MinApex = TheSurf->Value( uf1, v1 );
+                  }
+                  else
+                  {
+                    Handle(Geom_Curve) uiso = TheSurf->UIso( uf1 );
+                    GeomAPI_ProjectPointOnCurve Projector( Pint1, uiso );
+                    Standard_Real NewFirstV = Projector.LowerDistanceParameter();
+                    TheSurf = new Geom_RectangularTrimmedSurface(TheSurf, uf1, uf2, NewFirstV, vf2);
+                    MinApex = TheSurf->Value( uf1, NewFirstV );
+                    //TheSurf = new Geom_RectangularTrimmedSurface(TheSurf, uf1, uf2, vf1+length, vf2);
+                    //MinApex = TheSurf->Value( uf1, vf1+length );
+                  }
+                  HasSingularity = Standard_True;
+                }
+              } //end of if (VminDegen)
 	      if (VmaxDegen)
-		{
-		  Handle(Geom_Curve) viso = TheSurf->VIso( vf2 );
-		  if (BRepOffset_Tool::Gabarit( viso ) > TolApex)
-		    {
-		      Handle(Geom_Surface) BasisSurf = (*((Handle(Geom_OffsetSurface)*)&TheSurf))->BasisSurface();
-		      gp_Pnt Papex, Pfirst, Plast, Pmid;
-		      Papex = BasisSurf->Value( uf1, vf2 );
-		      Pfirst = TheSurf->Value( uf1, vf2 );
-		      Plast  = TheSurf->Value( uf2, vf2 );
-		      Pmid   = TheSurf->Value( (uf1+uf2)/2., vf2 );
-		      gp_Vec DirApex = gp_Vec(Pfirst,Pmid) ^ gp_Vec(Pfirst,Plast);
-		      Handle(Geom_Line) LineApex = new Geom_Line( Papex, DirApex );
-		      gp_Vec DirGeneratrix = BasisSurf->DN( uf1, vf2, 0, 1 );
-		      Handle(Geom_Line) LineGeneratrix = new Geom_Line( Pfirst, DirGeneratrix );
-		      GeomAPI_ExtremaCurveCurve theExtrema( LineGeneratrix, LineApex );
-		      gp_Pnt Pint1, Pint2;
-		      theExtrema.NearestPoints(Pint1, Pint2);
-		      Standard_Real length = Pfirst.Distance(Pint1);
-		      if (OffsetOutside)
-			{
-			  TheSurf = new Geom_RectangularTrimmedSurface(TheSurf, uf1, uf2, vf1, vf2);
-			  GeomLib::ExtendSurfByLength(*((Handle(Geom_BoundedSurface)*)&TheSurf), length, 1,
-						      Standard_False, Standard_True);
-			  Standard_Real u1, u2, v1, v2;
-			  TheSurf->Bounds( u1, u2, v1, v2 );
-			  MaxApex = TheSurf->Value( uf1, v2 );
-			}
-		      else
-			{
-			  Handle(Geom_Curve) uiso = TheSurf->UIso( uf1 );
-			  GeomAPI_ProjectPointOnCurve Projector( Pint1, uiso );
-			  Standard_Real NewLastV = Projector.LowerDistanceParameter();
-			  TheSurf = new Geom_RectangularTrimmedSurface(TheSurf, uf1, uf2, vf1, NewLastV);
-			  MaxApex = TheSurf->Value( uf1, NewLastV );
-			  //TheSurf = new Geom_RectangularTrimmedSurface(TheSurf, uf1, uf2, vf1, vf2-length);
-			  //MaxApex = TheSurf->Value( uf1, vf2-length );
-			}
-		      HasSingularity = Standard_True;
-		    }
-		} //end of if (VmaxDegen)
+              {
+                Handle(Geom_Curve) viso = TheSurf->VIso( vf2 );
+                if (BRepOffset_Tool::Gabarit( viso ) > TolApex)
+                {
+                  Handle(Geom_Surface) BasisSurf = (*((Handle(Geom_OffsetSurface)*)&TheSurf))->BasisSurface();
+                  gp_Pnt Papex, Pfirst, Pquart, Pmid;
+                  Papex = BasisSurf->Value( uf1, vf2 );
+                  Pfirst = TheSurf->Value( uf1, vf2 );
+                  Pquart = TheSurf->Value( 0.75*uf1+0.25*uf2, vf2 );
+                  Pmid   = TheSurf->Value( 0.5*(uf1+uf2), vf2 );
+                  gp_Vec DirApex = gp_Vec(Pfirst,Pquart) ^ gp_Vec(Pfirst,Pmid);
+                  Handle(Geom_Line) LineApex = new Geom_Line( Papex, DirApex );
+                  gp_Vec DirGeneratrix = BasisSurf->DN( uf1, vf2, 0, 1 );
+                  Handle(Geom_Line) LineGeneratrix = new Geom_Line( Pfirst, DirGeneratrix );
+                  GeomAPI_ExtremaCurveCurve theExtrema( LineGeneratrix, LineApex );
+                  gp_Pnt Pint1, Pint2;
+                  theExtrema.NearestPoints(Pint1, Pint2);
+                  Standard_Real length = Pfirst.Distance(Pint1);
+                  if (OffsetOutside)
+                  {
+                    TheSurf = new Geom_RectangularTrimmedSurface(TheSurf, uf1, uf2, vf1, vf2);
+                    GeomLib::ExtendSurfByLength(*((Handle(Geom_BoundedSurface)*)&TheSurf), length, 1,
+                                                Standard_False, Standard_True);
+                    Standard_Real u1, u2, v1, v2;
+                    TheSurf->Bounds( u1, u2, v1, v2 );
+                    MaxApex = TheSurf->Value( uf1, v2 );
+                  }
+                  else
+                  {
+                    Handle(Geom_Curve) uiso = TheSurf->UIso( uf1 );
+                    GeomAPI_ProjectPointOnCurve Projector( Pint1, uiso );
+                    Standard_Real NewLastV = Projector.LowerDistanceParameter();
+                    TheSurf = new Geom_RectangularTrimmedSurface(TheSurf, uf1, uf2, vf1, NewLastV);
+                    MaxApex = TheSurf->Value( uf1, NewLastV );
+                    //TheSurf = new Geom_RectangularTrimmedSurface(TheSurf, uf1, uf2, vf1, vf2-length);
+                    //MaxApex = TheSurf->Value( uf1, vf2-length );
+                  }
+                  HasSingularity = Standard_True;
+                }
+              } //end of if (VmaxDegen)
 	    } //end of else (case of Geom_OffsetSurface)
 	} //end of if (!DegEdges.IsEmpty())
     } //end of processing offsets of faces with possible degenerated edges
@@ -805,7 +901,7 @@ void BRepOffset_Offset::Init(const TopoDS_Face&                  Face,
 	  if (BRep_Tool::Degenerated(E)) {
 	    myBuilder.Degenerated(OE, Standard_True);
 	    /*
-#ifdef DEB
+#ifdef OCCT_DEBUG
 	    gp_Pnt        P1,P2;
 	    gp_Pnt2d      P2d;
 	    P2d = C2d->Value(f); TheSurf->D0(P2d.X(),P2d.Y(),P1);
@@ -1029,12 +1125,11 @@ void BRepOffset_Offset::Init(const TopoDS_Edge&     Path,
 
   // mise a same range de la nouvelle pcurve.
   if ( !C1is3D && !C1Denerated)
-  myBuilder.SameRange    (Edge1,Standard_False);
-  if ( !C1is3D && !C1Denerated) 
-    Range3d(Edge1,U1,U2);
-  myBuilder.Range       (Edge1,myFace,U1,U2); 
-    Range3d(Edge1,U1,U2);
-  myBuilder.Range       (Edge1,myFace,U1,U2);
+  {
+    myBuilder.SameRange    (Edge1,Standard_False);
+    myBuilder.Range(Edge1,U1,U2, Standard_True);
+  }
+  myBuilder.Range(Edge1,myFace,U1,U2);
   BRepLib::SameRange(Edge1);
   
   // mise a sameparameter pour les KPart
@@ -1070,7 +1165,8 @@ void BRepOffset_Offset::Init(const TopoDS_Edge&     Path,
 
   // mise a same range de la nouvelle pcurve.
   myBuilder.SameRange    (Edge2,Standard_False);
-  if ( !C2is3D && !C2Denerated) Range3d(Edge2,U1,U2);
+  if ( !C2is3D && !C2Denerated)
+    myBuilder.Range(Edge2, U1, U2, Standard_True);
   myBuilder.Range(Edge2,myFace,U1,U2);
   BRepLib::SameRange(Edge2);
   
@@ -1107,7 +1203,7 @@ void BRepOffset_Offset::Init(const TopoDS_Edge&     Path,
     Edge3 = TopoDS::Edge(aLocalEdge);
 //    Edge3 = TopoDS::Edge(FirstEdge.Oriented(TopAbs_FORWARD));
     TopExp::Vertices(Edge3,VVf,VVl);
-#ifdef DEB
+#ifdef OCCT_DEBUG
     // si firstedge n est pas nul, il faut que les vertex soient partages
     if ( !VVf.IsSame(V1f) && !VVf.IsSame(V2f) ) {
       cout << "Attention Vertex non partages !!!!!!" << endl;
@@ -1171,7 +1267,7 @@ void BRepOffset_Offset::Init(const TopoDS_Edge&     Path,
       Edge4 = TopoDS::Edge(aLocalEdge);
 //      Edge4 = TopoDS::Edge(LastEdge.Oriented(TopAbs_FORWARD));
       TopExp::Vertices(Edge4,VVf,VVl);
-#ifdef DEB
+#ifdef OCCT_DEBUG
       // si lastedge n est pas nul, il faut que les vertex soient partages
       if ( !VVf.IsSame(V1l) && !VVf.IsSame(V2l) ) {
 	cout << "Attention Vertex non partages !!!!!!" << endl;
@@ -1296,7 +1392,7 @@ void BRepOffset_Offset::Init(const TopoDS_Vertex&        Vertex,
   TopoDS_Vertex V1, V2, V3, V4;
 
 
-#ifdef DEB
+#ifdef OCCT_DEBUG
   char* name = new char[100];
   if (Affich) {
     NbOFFSET++;
@@ -1309,6 +1405,7 @@ void BRepOffset_Offset::Init(const TopoDS_Vertex&        Vertex,
     for (it.Initialize(LEdge); it.More(); it.Next()) {
       sprintf(name,"EOnSph_%d_%d",NbOFFSET,NbEdges++);
 #ifdef DRAW
+      const TopoDS_Shape& CurE = it.Value();
       DBRep::Set(name, CurE);
 #endif
     }
@@ -1316,29 +1413,29 @@ void BRepOffset_Offset::Init(const TopoDS_Vertex&        Vertex,
   }
 #endif
 
+  gp_Pnt Origin = BRep_Tool::Pnt(Vertex);
 
-  it.Initialize(LEdge);
-  TopExp::Vertices(TopoDS::Edge(it.Value()), V1, V2);
-  P1 = BRep_Tool::Pnt(V1);
-  P2 = BRep_Tool::Pnt(V2);
+  //// Find the axis of the sphere to exclude
+  //// degenerated and seam edges from the face under construction
+  BRepLib_MakeWire MW;
+  MW.Add(LEdge);
+  TopoDS_Wire theWire = MW.Wire();
 
-  if ( !it.More()) {
-    Standard_ConstructionError::Raise("BRepOffset_Sphere");
-  }
-  it.Next();
-  TopExp::Vertices(TopoDS::Edge(it.Value()), V3, V4);
+  ShapeFix_Shape Fixer(theWire);
+  Fixer.Perform();
+  theWire = TopoDS::Wire(Fixer.Shape());
 
-  P3 = BRep_Tool::Pnt(V3);
-  Standard_Real eps = 1.e-8;
-  if ( P1.Distance(P3) < eps || P2.Distance(P3) < eps)
-    P3 = BRep_Tool::Pnt(V4);
+  GProp_GProps GlobalProps;
+  BRepGProp::LinearProperties(theWire, GlobalProps);
+  gp_Pnt BaryCenter = GlobalProps.CentreOfMass();
+  gp_Vec Xdir(BaryCenter, Origin);
+
+  gp_Pnt FarestCorner = GetFarestCorner(theWire);
+  gp_Pln thePlane = gce_MakePln(Origin, BaryCenter, FarestCorner);
+  gp_Dir Vdir = thePlane.Axis().Direction();
+
+  gp_Ax3 Axis(Origin, Vdir, Xdir);
   
-  P = BRep_Tool::Pnt(Vertex);
-  
-  gp_Vec X = gp_Vec(P1,P2) ^ gp_Vec(P1,P3);
-  if ( X * gp_Vec(P1,P) < 0.) X.Reverse();
-
-  gp_Ax3 Axis( P, gp_Dir(gp_Vec(P1,P2)), gp_Dir(X));
   Handle(Geom_Surface) S 
     = new Geom_SphericalSurface( Axis, Abs(Offset));
 

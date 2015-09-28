@@ -33,7 +33,10 @@
 #include <gp_Vec.hxx>
 #include <math_FunctionSetRoot.hxx>
 #include <math_Vector.hxx>
-#include <Adaptor3d_SurfaceOfLinearExtrusion.hxx>
+#include <Adaptor3d_HSurfaceOfLinearExtrusion.hxx>
+
+IMPLEMENT_STANDARD_HANDLE (Extrema_ExtPExtS, Standard_Transient)
+IMPLEMENT_STANDARD_RTTIEXT(Extrema_ExtPExtS, Standard_Transient)
 
 static gp_Ax2 GetPosition (const Handle(Adaptor3d_HCurve)& C);
      
@@ -141,76 +144,121 @@ void Extrema_ExtPExtS::MakePreciser (Standard_Real& U,
 }
 //=============================================================================
 
-Extrema_ExtPExtS::Extrema_ExtPExtS ()
+Extrema_ExtPExtS::Extrema_ExtPExtS()
+: myuinf(0.0),
+  myusup(0.0),
+  mytolu(0.0),
+  myvinf(0.0),
+  myvsup(0.0),
+  mytolv(0.0),
+  myIsAnalyticallyComputable(Standard_False),
+  myDone(Standard_False),
+  myNbExt(Standard_False)
 {
-  myDone = Standard_False;
 }
 
 //=============================================================================
 
-Extrema_ExtPExtS::Extrema_ExtPExtS (const gp_Pnt&       P, 
-				    const Adaptor3d_SurfaceOfLinearExtrusion&  S,
-				    const Standard_Real    Umin,
-				    const Standard_Real    Usup,
-				    const Standard_Real    Vmin,
-				    const Standard_Real    Vsup,
-				    const Standard_Real    TolU, 
-				    const Standard_Real    TolV) 
+Extrema_ExtPExtS::Extrema_ExtPExtS (const gp_Pnt&                                       theP,
+                                    const Handle(Adaptor3d_HSurfaceOfLinearExtrusion)&  theS,
+                                    const Standard_Real                                 theUmin,
+                                    const Standard_Real                                 theUsup,
+                                    const Standard_Real                                 theVmin,
+                                    const Standard_Real                                 theVsup,
+                                    const Standard_Real                                 theTolU,
+                                    const Standard_Real                                 theTolV)
+: myuinf(theUmin),
+  myusup(theUsup),
+  mytolu(theTolU),
+  myvinf(theVmin),
+  myvsup(theVsup),
+  mytolv(theTolV),
+  myS   (theS),
+  myIsAnalyticallyComputable(Standard_False),
+  myDone(Standard_False),
+  myNbExt(Standard_False)
 {
-  Initialize (S,
-	      Umin, Usup, Vmin, Vsup,
-	      TolU, TolV);
-  Perform(P);
+  Initialize (theS,
+              theUmin,
+              theUsup,
+              theVmin,
+              theVsup,
+              theTolU,
+              theTolV);
+
+  Perform (theP);
 }
 //=============================================================================
 
-Extrema_ExtPExtS::Extrema_ExtPExtS (const gp_Pnt&       P, 
-				    const Adaptor3d_SurfaceOfLinearExtrusion&  S,
-				    const Standard_Real    TolU, 
-				    const Standard_Real    TolV)
+Extrema_ExtPExtS::Extrema_ExtPExtS (const gp_Pnt&                                       theP,
+                                    const Handle(Adaptor3d_HSurfaceOfLinearExtrusion)&  theS,
+                                    const Standard_Real                                 theTolU, 
+                                    const Standard_Real                                 theTolV)
+: myuinf(theS->FirstUParameter()),
+  myusup(theS->LastUParameter()),
+  mytolu(theTolU),
+  myvinf(theS->FirstVParameter()),
+  myvsup(theS->LastVParameter()),
+  mytolv(theTolV),
+  myS   (theS),
+  myIsAnalyticallyComputable(Standard_False),
+  myDone(Standard_False),
+  myNbExt(Standard_False)
 {
-  Initialize (S,
-	      S.FirstUParameter(), S.LastUParameter(),
-	      S.FirstVParameter(), S.LastVParameter(),
-	      TolU, TolV);
-  Perform(P);
+  Initialize (theS,
+              theS->FirstUParameter(),
+              theS->LastUParameter(),
+              theS->FirstVParameter(),
+              theS->LastVParameter(),
+              theTolU,
+              theTolV);
+
+  Perform (theP);
 }
+
 //=======================================================================
 //function : Initialize
 //purpose  : 
 //=======================================================================
 
-void Extrema_ExtPExtS::Initialize(const Adaptor3d_SurfaceOfLinearExtrusion& S,
-				  const Standard_Real Uinf,
-				  const Standard_Real Usup,
-				  const Standard_Real Vinf,
-				  const Standard_Real Vsup,
-				  const Standard_Real TolU,
-				  const Standard_Real TolV)
+void Extrema_ExtPExtS::Initialize (const Handle(Adaptor3d_HSurfaceOfLinearExtrusion)&  theS,
+                                   const Standard_Real                                 theUinf,
+                                   const Standard_Real                                 theUsup,
+                                   const Standard_Real                                 theVinf,
+                                   const Standard_Real                                 theVsup,
+                                   const Standard_Real                                 theTolU,
+                                   const Standard_Real                                 theTolV)
 {
-  myuinf=Uinf;
-  myusup=Usup;
-  mytolu=TolU;
+  myuinf = theUinf;
+  myusup = theUsup;
+  mytolu = theTolU;
   
-  myvinf=Vinf;
-  myvsup=Vsup;
-  mytolv=TolV;
+  myvinf = theVinf;
+  myvsup = theVsup;
+  mytolv = theTolV;
   
-  Handle(Adaptor3d_HCurve) anACurve = S.BasisCurve();
+  Handle(Adaptor3d_HCurve) anACurve = theS->BasisCurve();
 
-  myF.Initialize(S);
+  myF.Initialize (theS->ChangeSurface());
   myC = anACurve;
-  myS = (Adaptor3d_SurfacePtr)&S;
+  myS = theS;
   myPosition = GetPosition(myC);
-  myDirection = S.Direction();
+  myDirection = theS->Direction();
   myIsAnalyticallyComputable = //Standard_False;
-    IsCaseAnalyticallyComputable (myC->GetType(),myPosition,myDirection);
+    IsCaseAnalyticallyComputable (myC->GetType(), myPosition, myDirection);
   
   if (!myIsAnalyticallyComputable)
-    
-    myExtPS.Initialize(S, 32, 32,
-		       Uinf, Usup, Vinf, Vsup,
-		       TolU, TolV);
+  {
+    myExtPS.Initialize (theS->ChangeSurface(),
+                        32,
+                        32,
+                        theUinf,
+                        theUsup,
+                        theVinf,
+                        theVsup,
+                        theTolU,
+                        theTolV);
+  }
 }
 
 
@@ -290,7 +338,8 @@ void Extrema_ExtPExtS::Perform (const gp_Pnt& P)
       Pe = ProjectPnt (anOrtogSection, myDirection, E),
       V = gp_Vec(E,Pe) * gp_Vec(myDirection);
       UV(1) = U;         UV(2) = V;
-      math_FunctionSetRoot aFSR (myF,UV,Tol,UVinf,UVsup);
+      math_FunctionSetRoot aFSR (myF, Tol);
+      aFSR.Perform(myF, UV, UVinf, UVsup);
 //      for (Standard_Integer k=1 ; k <= myF.NbExt(); 
       Standard_Integer k;
       for ( k=1 ; k <= myF.NbExt(); k++) {
@@ -534,7 +583,7 @@ static gp_Pnt GetValue(const Standard_Real U,
 //function : GetU
 //purpose  : 
 //=======================================================================
-//#ifdef DEB
+//#ifdef OCCT_DEBUG
 //static Standard_Real GetU(const gp_Vec& vec,
 //			  const gp_Pnt& P,
 //			  const Handle(Adaptor3d_HCurve)& C)

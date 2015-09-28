@@ -27,9 +27,9 @@
 //
 #include <BOPCol_MapOfInteger.hxx>
 #include <BOPCol_NCVector.hxx>
-#include <BOPCol_TBB.hxx>
+#include <BOPCol_Parallel.hxx>
 //
-#include <BOPInt_Context.hxx>
+#include <IntTools_Context.hxx>
 //
 #include <BOPDS_Iterator.hxx>
 #include <BOPDS_VectorOfInterfVF.hxx>
@@ -42,14 +42,17 @@
 //class    : BOPAlgo_VertexFace
 //purpose  : 
 //=======================================================================
-class BOPAlgo_VertexFace {
+class BOPAlgo_VertexFace : public BOPAlgo_Algo {
  public:
-  BOPAlgo_VertexFace()
-    : myIV(-1), myIF(-1), myIVx(-1), 
+  DEFINE_STANDARD_ALLOC
+
+  BOPAlgo_VertexFace() : 
+    BOPAlgo_Algo(),
+    myIV(-1), myIF(-1), myIVx(-1), 
     myFlag(-1), myT1(-1.),  myT2(-1.) {
   }
   //
-  ~BOPAlgo_VertexFace(){
+  virtual ~BOPAlgo_VertexFace(){
   }
   //
   void SetIndices(const Standard_Integer nV,
@@ -94,15 +97,16 @@ class BOPAlgo_VertexFace {
     aT2=myT2;
   }
   //
-  void SetContext(const Handle(BOPInt_Context)& aContext) {
+  void SetContext(const Handle(IntTools_Context)& aContext) {
     myContext=aContext;
   }
   //
-  const Handle(BOPInt_Context)& Context()const {
+  const Handle(IntTools_Context)& Context()const {
     return myContext;
   }
   //
-  void Perform() {
+  virtual void Perform() {
+    BOPAlgo_Algo::UserBreak();
     myFlag=myContext->ComputeVF(myV, myF, myT1, myT2);
   }
   //
@@ -115,22 +119,22 @@ class BOPAlgo_VertexFace {
   Standard_Real myT2;
   TopoDS_Vertex myV;
   TopoDS_Face myF;
-  Handle(BOPInt_Context) myContext;
+  Handle(IntTools_Context) myContext;
 };
 //=======================================================================
 typedef BOPCol_NCVector<BOPAlgo_VertexFace>
   BOPAlgo_VectorOfVertexFace; 
 //
-typedef BOPCol_TBBContextFunctor 
+typedef BOPCol_ContextFunctor 
   <BOPAlgo_VertexFace,
   BOPAlgo_VectorOfVertexFace,
-  Handle_BOPInt_Context, 
-  BOPInt_Context> BOPAlgo_VertexFaceFunctor;
+  Handle(IntTools_Context), 
+  IntTools_Context> BOPAlgo_VertexFaceFunctor;
 //
-typedef BOPCol_TBBContextCnt 
+typedef BOPCol_ContextCnt 
   <BOPAlgo_VertexFaceFunctor,
   BOPAlgo_VectorOfVertexFace,
-  Handle_BOPInt_Context> BOPAlgo_VertexFaceCnt;
+  Handle(IntTools_Context)> BOPAlgo_VertexFaceCnt;
 //
 //=======================================================================
 // function: PerformVF
@@ -139,7 +143,7 @@ typedef BOPCol_TBBContextCnt
 void BOPAlgo_PaveFiller::PerformVF()
 {
   Standard_Boolean bJustAdd;
-  Standard_Integer iSize, nV, nF, nVSD, iFlag, nVx, i, aNbVF, k;
+  Standard_Integer iSize, nV, nF, nVSD, iFlag, nVx, aNbVF, k;
   Standard_Real aT1, aT2, aTolF, aTolV;
   BRep_Builder aBB;
   BOPAlgo_VectorOfVertexFace aVVF; 
@@ -151,9 +155,7 @@ void BOPAlgo_PaveFiller::PerformVF()
   if (iSize) {
     //
     BOPDS_VectorOfInterfVF& aVFs=myDS->InterfVF();
-    aVFs.SetStartSize(iSize);
     aVFs.SetIncrement(iSize);
-    aVFs.Init();
     //
     for (; myIterator->More(); myIterator->Next()) {
       myIterator->Value(nV, nF, bJustAdd);
@@ -189,6 +191,7 @@ void BOPAlgo_PaveFiller::PerformVF()
       aVertexFace.SetIndices(nV, nF, nVx);
       aVertexFace.SetVertex(aV);
       aVertexFace.SetFace(aF);
+      aVertexFace.SetProgressIndicator(myProgressIndicator);
     }//for (; myIterator->More(); myIterator->Next()) {
     //
     aNbVF=aVVF.Extent();
@@ -209,8 +212,7 @@ void BOPAlgo_PaveFiller::PerformVF()
       const TopoDS_Vertex& aV=aVertexFace.Vertex();
       const TopoDS_Face& aF=aVertexFace.Face();
       // 1
-      i=aVFs.Append()-1;
-      BOPDS_InterfVF& aVF=aVFs(i);
+      BOPDS_InterfVF& aVF=aVFs.Append1();
       aVF.SetIndices(nVx, nF);
       aVF.SetUV(aT1, aT2);
       // 2
@@ -233,9 +235,7 @@ void BOPAlgo_PaveFiller::PerformVF()
   else {
     iSize=10;
     BOPDS_VectorOfInterfVF& aVFs=myDS->InterfVF();
-    aVFs.SetStartSize(iSize);
     aVFs.SetIncrement(iSize);
-    aVFs.Init();
   }
   //
   TreatVerticesEE();
@@ -246,7 +246,7 @@ void BOPAlgo_PaveFiller::PerformVF()
 //=======================================================================
 void BOPAlgo_PaveFiller::TreatVerticesEE()
 {
-  Standard_Integer i, aNbS, aNbEEs, nF, nV, iFlag;
+  Standard_Integer i, aNbS,aNbEEs, nF, nV, iFlag;
   Standard_Real aT1, aT2;
   BOPCol_ListIteratorOfListOfInteger aItLI;
   Handle(NCollection_IncAllocator) aAllocator;
@@ -310,8 +310,8 @@ void BOPAlgo_PaveFiller::TreatVerticesEE()
       iFlag=myContext->ComputeVF(aV, aF, aT1, aT2);
       if (!iFlag) {
         // 1
-        i=aVFs.Append()-1;
-        BOPDS_InterfVF& aVF=aVFs(i);
+        BOPDS_InterfVF& aVF=aVFs.Append1();
+        i=aVFs.Extent()-1;
         aVF.SetIndices(nV, nF);
         aVF.SetUV(aT1, aT2);
         // 2

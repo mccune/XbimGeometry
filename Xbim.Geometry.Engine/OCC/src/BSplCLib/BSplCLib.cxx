@@ -1175,7 +1175,8 @@ void  BSplCLib::Bohm(const Standard_Real U,
       
       for (j = Degm1; j >= i; j--) {
 	jDmi--;
-	*pole -= *tbis; *pole /= (knot[jDmi] - knot[j]);
+	*pole -= *tbis;
+  *pole = (knot[jDmi] == knot[j]) ? 0.0 :  *pole / (knot[jDmi] - knot[j]);
 	pole--;
 	tbis--;
       }
@@ -1219,7 +1220,7 @@ void  BSplCLib::Bohm(const Standard_Real U,
       
       for (j = Degm1; j >= i; j--) {
 	jDmi--;
-	coef   = 1. / (knot[jDmi] - knot[j]);
+	coef   = (knot[jDmi] == knot[j]) ? 0.0 : 1. / (knot[jDmi] - knot[j]);
 	*pole -= *tbis; *pole *= coef; pole++; tbis++;
 	*pole -= *tbis; *pole *= coef;
 	pole  -= 3;
@@ -1267,7 +1268,7 @@ void  BSplCLib::Bohm(const Standard_Real U,
       
       for (j = Degm1; j >= i; j--) {
 	jDmi--;
-	coef   = 1. / (knot[jDmi] - knot[j]);
+	coef   = (knot[jDmi] == knot[j]) ? 0.0 : 1. / (knot[jDmi] - knot[j]);
 	*pole -= *tbis; *pole *= coef; pole++; tbis++;
 	*pole -= *tbis; *pole *= coef; pole++; tbis++;
 	*pole -= *tbis; *pole *= coef;
@@ -1318,7 +1319,7 @@ void  BSplCLib::Bohm(const Standard_Real U,
       
       for (j = Degm1; j >= i; j--) {
 	jDmi--;
-	coef   = 1. / (knot[jDmi] - knot[j]);
+	coef   = (knot[jDmi]  == knot[j]) ? 0.0 : 1. /(knot[jDmi] - knot[j]) ;
 	*pole -= *tbis; *pole *= coef; pole++; tbis++;
 	*pole -= *tbis; *pole *= coef; pole++; tbis++;
 	*pole -= *tbis; *pole *= coef; pole++; tbis++;
@@ -1374,7 +1375,7 @@ void  BSplCLib::Bohm(const Standard_Real U,
 	
 	for (j = Degm1; j >= i; j--) {
 	  jDmi--;
-	  coef = 1. / (knot[jDmi] - knot[j]);
+	  coef = (knot[jDmi] == knot[j]) ? 0.0 : 1. / (knot[jDmi] - knot[j]);
 	  
 	  for (k = 0; k < Dimension; k++) {
 	    *pole -= *tbis; *pole *= coef; pole++; tbis++;
@@ -1697,11 +1698,12 @@ Standard_Boolean  BSplCLib::PrepareInsertKnots
   {
     //gka for case when segments was produced on full period only one knot
     //was added in the end of curve
-    if(fabs(adeltaK1) <= Precision::PConfusion() && 
-      fabs(adeltaK2) <= Precision::PConfusion())
+    if(fabs(adeltaK1) <= gp::Resolution() && 
+       fabs(adeltaK2) <= gp::Resolution())
       ak++;
   }
   
+  Standard_Integer aLastKnotMult = Mults (Knots.Upper());
   Standard_Real au,oldau = AddKnots(ak),Eps;
   
   while (ak <= AddKnots.Upper()) {
@@ -1741,7 +1743,15 @@ Standard_Boolean  BSplCLib::PrepareInsertKnots
       }
       else if (amult > mult) {
 	if (amult > Degree) amult = Degree;
-	sigma += amult - mult;
+        if (k == Knots.Upper () && Periodic)
+        {
+          aLastKnotMult = Max (amult, mult);
+          sigma += 2 * (aLastKnotMult - mult);
+        }
+        else
+        {
+	  sigma += amult - mult;
+        }
       }
       /*
       // on periodic curves if this is the last knot
@@ -1779,7 +1789,7 @@ Standard_Boolean  BSplCLib::PrepareInsertKnots
     //instance);
     //respectively AddMults() must meet this requirement if AddKnots() contains
     //knot(s) coincident with first or last
-    NbPoles = sigma - Mults(Knots.Upper());
+    NbPoles = sigma - aLastKnotMult;
   }
   else {
     NbPoles = sigma - Degree - 1;
@@ -1968,7 +1978,8 @@ void BSplCLib::InsertKnots
       if (Periodic) {
 	// on periodic curve the first and last knot are delayed to the end
 	if (curk == Knots.Lower() || (curk == Knots.Upper())) {
-	  firstmult += depth;
+          if (firstmult == 0) // do that only once
+            firstmult += depth;
 	  depth = 0;
 	}
       }
@@ -3009,14 +3020,16 @@ void  BSplCLib::Interpolate(const Standard_Integer         Degree,
                            InterpolationMatrix,
                            UpperBandWidth,
                            LowerBandWidth) ;
-  Standard_OutOfRange_Raise_if (ErrorCode != 0, "BSplCLib::Interpolate") ;
+  if(ErrorCode)
+    Standard_OutOfRange::Raise("BSplCLib::Interpolate");
 
   ErrorCode =
   BSplCLib::FactorBandedMatrix(InterpolationMatrix,
                            UpperBandWidth,
                            LowerBandWidth,
                            InversionProblem) ;
-  Standard_OutOfRange_Raise_if (ErrorCode != 0, "BSplCLib::Interpolate") ;
+  if(ErrorCode)
+    Standard_OutOfRange::Raise("BSplCLib::Interpolate");
 
   ErrorCode  =
   BSplCLib::SolveBandedSystem(InterpolationMatrix,
@@ -3024,9 +3037,9 @@ void  BSplCLib::Interpolate(const Standard_Integer         Degree,
                               LowerBandWidth,
 			      ArrayDimension,
                               Poles) ;
-
-  Standard_OutOfRange_Raise_if (ErrorCode != 0,"BSplCLib::Interpolate")  ;
-} 
+  if(ErrorCode)
+    Standard_OutOfRange::Raise("BSplCLib::Interpolate");
+}
 
 //=======================================================================
 //function : Interpolate
@@ -3056,14 +3069,16 @@ void  BSplCLib::Interpolate(const Standard_Integer         Degree,
                            InterpolationMatrix,
                            UpperBandWidth,
                            LowerBandWidth) ;
-  Standard_OutOfRange_Raise_if (ErrorCode != 0, "BSplCLib::Interpolate") ;
+  if(ErrorCode)
+    Standard_OutOfRange::Raise("BSplCLib::Interpolate");
 
   ErrorCode =
   BSplCLib::FactorBandedMatrix(InterpolationMatrix,
                            UpperBandWidth,
                            LowerBandWidth,
                            InversionProblem) ;
-  Standard_OutOfRange_Raise_if (ErrorCode != 0, "BSplCLib::Interpolate") ;
+  if(ErrorCode)
+    Standard_OutOfRange::Raise("BSplCLib::Interpolate");
 
   ErrorCode  =
   BSplCLib::SolveBandedSystem(InterpolationMatrix,
@@ -3073,8 +3088,8 @@ void  BSplCLib::Interpolate(const Standard_Integer         Degree,
 			      ArrayDimension,
                               Poles,
 			      Weights) ;
-
-  Standard_OutOfRange_Raise_if (ErrorCode != 0,"BSplCLib::Interpolate")  ;
+  if(ErrorCode)
+    Standard_OutOfRange::Raise("BSplCLib::Interpolate");
 }
 
 //=======================================================================
@@ -3471,7 +3486,7 @@ void  BSplCLib::TangExtendToConstraint
  Standard_Real&                        KnotsResult, 
  Standard_Real&                        PolesResult) 
 {
-#if DEB
+#ifdef OCCT_DEBUG
   if (CDegree<Continuity+1) {
     cout<<"The BSpline degree must be greater than the order of continuity"<<endl;
   }

@@ -55,7 +55,7 @@
 #include <Standard_NotImplemented.hxx>
 #include <Standard_DomainError.hxx>
 
-#ifdef DEB
+#ifdef OCCT_DEBUG
 extern Standard_Boolean ChFi3d_GettraceCHRON();
 #endif
 
@@ -641,7 +641,7 @@ void  ChFi3d_ChBuilder::ResetContour(const Standard_Integer IC)
 
 void ChFi3d_ChBuilder::Simulate (const Standard_Integer IC)
 {
-#ifdef DEB
+#ifdef OCCT_DEBUG
   if(ChFi3d_GettraceCHRON()){
     simul.Reset();elspine.Reset();chemine.Reset();
     simul.Start();
@@ -655,7 +655,7 @@ void ChFi3d_ChBuilder::Simulate (const Standard_Integer IC)
       break;
     }
   }
-#ifdef DEB
+#ifdef OCCT_DEBUG
   if(ChFi3d_GettraceCHRON()){
     simul.Stop();
     cout<<"Total simulation time : ";
@@ -1289,7 +1289,7 @@ Standard_Boolean ChFi3d_ChBuilder::PerformFirstSection
     
     BRepBlend_Chamfer Func(S1,S2,HGuide);
     Func.Set(dis,dis,Choix);
-    BRepBlend_Walking TheWalk(S1,S2,I1,I2);
+    BRepBlend_Walking TheWalk(S1,S2,I1,I2,HGuide);
     
     //calculate an approximate starting solution
     gp_Vec TgF, TgL, tmp1, tmp2, d1gui;
@@ -1346,7 +1346,7 @@ Standard_Boolean ChFi3d_ChBuilder::PerformFirstSection
     
     BRepBlend_Chamfer Func(S1,S2,HGuide);
     Func.Set(dis1,dis2,Choix);
-    BRepBlend_Walking TheWalk(S1,S2,I1,I2);
+    BRepBlend_Walking TheWalk(S1,S2,I1,I2,HGuide);
     
     //calculate an approximate starting solution
     gp_Vec TgF, TgL, tmp1, tmp2, d1gui;
@@ -1407,7 +1407,7 @@ Standard_Boolean ChFi3d_ChBuilder::PerformFirstSection
     if (disonF1)  {
       BRepBlend_ChAsym Func(S1,S2,HGuide);
       Func.Set(dis1, angle, Ch);
-      BRepBlend_Walking TheWalk(S1,S2,I1,I2);
+      BRepBlend_Walking TheWalk(S1,S2,I1,I2,HGuide);
     
     //calculate an approximate starting solution
       gp_Vec TgF, TgL, tmp1, tmp2, d1gui;
@@ -1469,7 +1469,7 @@ Standard_Boolean ChFi3d_ChBuilder::PerformFirstSection
       Standard_Real Rtemp;
       BRepBlend_ChAsym Func(S2,S1,HGuide);
       Func.Set(dis1, angle, Ch);
-      BRepBlend_Walking TheWalk(S2,S1,I2,I1);
+      BRepBlend_Walking TheWalk(S2,S1,I2,I1,HGuide);
     
     //calculate an approximate starting solution
       gp_Vec TgF, TgL, tmp1, tmp2, d1gui;

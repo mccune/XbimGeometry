@@ -21,23 +21,23 @@
 
 #include <BOPCol_NCVector.hxx>
 #include <BOPCol_MapOfInteger.hxx>
-#include <BOPCol_TBB.hxx>
+#include <BOPCol_Parallel.hxx>
 
 #include <BOPDS_ShapeInfo.hxx>
 #include <BOPDS_PaveBlock.hxx>
 #include <BOPDS_Iterator.hxx>
 #include <BOPDS_ListOfPaveBlock.hxx>
 
-#include <BOPInt_ShrunkRange.hxx>
+#include <IntTools_ShrunkRange.hxx>
 
 //=======================================================================
 //class    : BOPAlgo_ShrunkRange
 //purpose  : 
 //=======================================================================
-class BOPAlgo_ShrunkRange : public BOPInt_ShrunkRange {
+class BOPAlgo_ShrunkRange : public IntTools_ShrunkRange {
  public:
   BOPAlgo_ShrunkRange() 
-  : BOPInt_ShrunkRange(),
+  : IntTools_ShrunkRange(),
     myWarningStatus(0) {
   }
   //
@@ -56,7 +56,7 @@ class BOPAlgo_ShrunkRange : public BOPInt_ShrunkRange {
     //
     myWarningStatus=0;
     //
-    BOPInt_ShrunkRange::Perform();
+    IntTools_ShrunkRange::Perform();
     if (myErrorStatus) {
       myWarningStatus=1;
     }
@@ -75,16 +75,16 @@ class BOPAlgo_ShrunkRange : public BOPInt_ShrunkRange {
 typedef BOPCol_NCVector
   <BOPAlgo_ShrunkRange> BOPAlgo_VectorOfShrunkRange; 
 //
-typedef BOPCol_TBBContextFunctor 
+typedef BOPCol_ContextFunctor 
   <BOPAlgo_ShrunkRange,
   BOPAlgo_VectorOfShrunkRange,
-  Handle_BOPInt_Context, 
-  BOPInt_Context> BOPAlgo_ShrunkRangeFunctor;
+  Handle(IntTools_Context), 
+  IntTools_Context> BOPAlgo_ShrunkRangeFunctor;
 //
-typedef BOPCol_TBBContextCnt 
+typedef BOPCol_ContextCnt 
   <BOPAlgo_ShrunkRangeFunctor,
   BOPAlgo_VectorOfShrunkRange,
-  Handle_BOPInt_Context> BOPAlgo_ShrunkRangeCnt;
+  Handle(IntTools_Context)> BOPAlgo_ShrunkRangeCnt;
 //
 //=======================================================================
 // function: FillShrunkData

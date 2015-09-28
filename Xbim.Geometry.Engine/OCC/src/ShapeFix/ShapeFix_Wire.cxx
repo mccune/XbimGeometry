@@ -567,69 +567,95 @@ Standard_Boolean ShapeFix_Wire::FixEdgeCurves()
 	    }
 	  }
 	  if ( seq.Length() >0 ) { // supposed that edge is SP
-#ifdef DEB
+#ifdef OCCT_DEBUG
 	    cout << "Edge going over singularity detected; splitted" << endl;
 #endif
-	    Standard_Boolean isFwd = ( E.Orientation() == TopAbs_FORWARD );
-	    E.Orientation ( TopAbs_FORWARD );
+      Standard_Boolean isFwd = ( E.Orientation() == TopAbs_FORWARD );
+      E.Orientation ( TopAbs_FORWARD );
 
-            //if( BRep_Tool::SameParameter(sbwd->Edge(i)) )
-            //  sbe.RemovePCurve ( E, face );
+      //if( BRep_Tool::SameParameter(sbwd->Edge(i)) )
+      //  sbe.RemovePCurve ( E, face );
 
-            //10.04.2003 skl for using trimmed lines as pcurves
-	    ShapeAnalysis_Edge sae;
-            if( BRep_Tool::SameParameter(sbwd->Edge(i)) )
-              sbe.RemovePCurve ( E, face );
-            else {
-              if(sae.HasPCurve(E,face)) {
-                Handle(Geom2d_Curve) C2d;
-                Standard_Real fp2d,lp2d;
-                if(sae.PCurve(E,face,C2d,fp2d,lp2d)) {
-                  if( !C2d->IsKind(STANDARD_TYPE(Geom2d_TrimmedCurve)) )
-                    sbe.RemovePCurve(E,face);
-                }
-              }
+      //10.04.2003 skl for using trimmed lines as pcurves
+      ShapeAnalysis_Edge sae;
+      if( BRep_Tool::SameParameter(sbwd->Edge(i)) )
+        sbe.RemovePCurve ( E, face );
+      else {
+        if(sae.HasPCurve(E,face)) {
+          Handle(Geom2d_Curve) C2d;
+          Standard_Real fp2d,lp2d;
+          if(sae.PCurve(E,face,C2d,fp2d,lp2d)) {
+            if( !C2d->IsKind(STANDARD_TYPE(Geom2d_TrimmedCurve)) )
+              sbe.RemovePCurve(E,face);
+          }
+        }
+      }
+
+//    myFixEdge->FixSameParameter ( E ); // to ensure SameRange & SP
+      BRep_Builder B;
+      TopoDS_Vertex V1, V2, V;
+      //ShapeAnalysis_Edge sae;
+      V1 = sae.FirstVertex ( E );
+      V2 = sae.LastVertex ( E );
+        
+      Handle(ShapeExtend_WireData) sw = new ShapeExtend_WireData;
+      for ( Standard_Integer k=0; k <= seq.Length(); k++ )
+      {
+        Standard_Real split = ( k < seq.Length() ? seq(k+1) : b );
+        if ( k < seq.Length() )
+        {
+          B.MakeVertex ( V, C->Value(split), BRep_Tool::Tolerance(E) );
+          //try increase tolerance before splitting
+          Standard_Real aDist = BRep_Tool::Pnt(V1).Distance(BRep_Tool::Pnt(V));
+          if (aDist < BRep_Tool::Tolerance(V1) * 1.01) {
+            B.UpdateVertex(V1, Max(aDist, BRep_Tool::Tolerance(V1)));
+            a = split;
+            V1 = V;
+            continue;
+          }
+          else
+          {
+            aDist = BRep_Tool::Pnt(V2).Distance(BRep_Tool::Pnt(V));
+            if (aDist < BRep_Tool::Tolerance(V2) * 1.01) {
+              B.UpdateVertex(V, Max(aDist, BRep_Tool::Tolerance(V2)));
+              b = split;
+              V2 = V;
+              continue;
             }
+          }
+        }
+        else
+        {
+          V = V2;
+        }
 
-//	    myFixEdge->FixSameParameter ( E ); // to ensure SameRange & SP
-	    BRep_Builder B;
-	    TopoDS_Vertex V1, V2, V;
-	    //ShapeAnalysis_Edge sae;
-	    V1 = sae.FirstVertex ( E );
-	    V2 = sae.LastVertex ( E );
-	    Handle(ShapeExtend_WireData) sw = new ShapeExtend_WireData;
-	    for ( Standard_Integer k=0; k <= seq.Length(); k++ ) {
-	      Standard_Real split = ( k < seq.Length() ? seq(k+1) : b );
-	      if ( k < seq.Length() ) 
-		B.MakeVertex ( V, C->Value(split), BRep_Tool::Tolerance(E) );
-	      else V = V2;
-	      TopoDS_Edge edge = sbe.CopyReplaceVertices ( E, V1, V );
-              if( BRep_Tool::SameParameter(sbwd->Edge(i)) ) {
-                //TopoDS_Edge edge = sbe.CopyReplaceVertices ( E, V1, V );
-                B.Range ( edge, a, split );
-                sw->Add ( edge );
-              }
-              else {
-                //TopoDS_Edge edge = sbe.CopyReplaceVertices(sbwd->Edge(i),V1,V);
-                Handle(ShapeAnalysis_TransferParameters) sftp =
-                  new ShapeAnalysis_TransferParameters(E,face);
-                sftp->TransferRange(edge, a, split, Standard_False);
-                sw->Add(edge);
-              }
-              //sw->Add(edge);
-	      a = split;
-	      V1 = V;
-	    }
-	    if ( ! isFwd ) {
-	      sw->Reverse();
-	      E.Orientation ( TopAbs_REVERSED );
-	    }
-	    Context()->Replace ( E, sw->Wire() );
-	    UpdateWire();
-	    nb = sbwd->NbEdges();
-	    i--;
-	    continue;
-	  }
+        TopoDS_Edge edge = sbe.CopyReplaceVertices ( E, V1, V );
+        if( BRep_Tool::SameParameter(sbwd->Edge(i)) ) {
+          //TopoDS_Edge edge = sbe.CopyReplaceVertices ( E, V1, V );
+          B.Range ( edge, a, split );
+          sw->Add ( edge );
+        }
+        else {
+          //TopoDS_Edge edge = sbe.CopyReplaceVertices(sbwd->Edge(i),V1,V);
+          Handle(ShapeAnalysis_TransferParameters) sftp =
+            new ShapeAnalysis_TransferParameters(E,face);
+          sftp->TransferRange(edge, a, split, Standard_False);
+          sw->Add(edge);
+        }
+        //sw->Add(edge);
+        a = split;
+        V1 = V;
+      }
+      if ( ! isFwd ) {
+        sw->Reverse();
+        E.Orientation ( TopAbs_REVERSED );
+      }
+      Context()->Replace ( E, sw->Wire() );
+      UpdateWire();
+      nb = sbwd->NbEdges();
+      i--;
+      continue;
+    }
 	}
 	
 	overdegen = i;
@@ -656,7 +682,7 @@ Standard_Boolean ShapeFix_Wire::FixEdgeCurves()
 	myFixEdge->Projector()->AdjustOverDegenMode() = Standard_False;
 	myFixEdge->FixAddPCurve ( sbwd->Edge(overdegen), face, sbwd->IsSeam(overdegen), myAnalyzer->Surface(), Precision());
       }
-#ifdef DEB
+#ifdef OCCT_DEBUG
       cout << "Edge going over singularity detected; pcurve adjusted" << endl;
 #endif
     }
@@ -730,7 +756,7 @@ Standard_Boolean ShapeFix_Wire::FixEdgeCurves()
         Standard_Real fp2d,lp2d;
         if(sae.PCurve(sbwd->Edge(i),face,C2d,fp2d,lp2d)) {
           if( fabs(First-fp2d)>Precision::PConfusion() ||
-              fabs(Last-fp2d)>Precision::PConfusion() ) {
+              fabs(Last-lp2d)>Precision::PConfusion() ) {
             BRep_Builder B;
             B.SameRange(sbwd->Edge(i),Standard_False);
           }
@@ -845,13 +871,14 @@ Standard_Boolean ShapeFix_Wire::FixSelfIntersection()
       if(LastFixStatus (ShapeExtend_DONE6))
   myStatusSelfIntersection |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE6 );
 
-      if ( ! myTopoMode || nb < 3 ) {
-	//#86 rln 22.03.99 sim2.igs, entity 4292: After fixing of self-intersecting
-	//BRepCheck finds one more self-intersection not found by ShapeAnalysis
-	//%15 pdn 06.04.99 repeat until fixed CTS18546-2 entity 777
-	//FixIntersectingEdges ( num );
-	if ( LastFixStatus ( ShapeExtend_DONE7 ) ) num--;
-	continue;
+      if ( /*! myTopoMode ||*/ nb < 3 ) {
+        //#86 rln 22.03.99 sim2.igs, entity 4292: After fixing of self-intersecting
+        //BRepCheck finds one more self-intersection not found by ShapeAnalysis
+        //%15 pdn 06.04.99 repeat until fixed CTS18546-2 entity 777
+        
+        // if the tolerance was modified we should recheck the result, if it was enough
+        if ( LastFixStatus ( ShapeExtend_DONE7 ) ) num--;
+        continue;
       }
 
       if ( LastFixStatus ( ShapeExtend_DONE4 ) ) sbwd->Remove ( num );
@@ -861,7 +888,7 @@ Standard_Boolean ShapeFix_Wire::FixSelfIntersection()
 	myStatusSelfIntersection |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE3 );
 	num = ( myClosedMode ? 1 : 2 );
 	nb = sbwd->NbEdges();
-#ifdef DEB
+#ifdef OCCT_DEBUG
 	cout << "Warning: ShapeFix_Wire::FixSelfIntersection: Edge removed" << endl;
 #endif
       }
@@ -869,7 +896,9 @@ Standard_Boolean ShapeFix_Wire::FixSelfIntersection()
 	//#86 rln 22.03.99
 	//%15 pdn 06.04.99 repeat until fixed CTS18546-2 entity 777
 	//FixIntersectingEdges ( num );
-	if ( LastFixStatus ( ShapeExtend_DONE7 ) ) num--;
+	/*if ( LastFixStatus ( ShapeExtend_DONE7 ) )*/
+        // Always revisit the fixed edge
+        num--;
       }
     }
   }
@@ -890,7 +919,7 @@ Standard_Boolean ShapeFix_Wire::FixSelfIntersection()
       if ( ! Context().IsNull() ) UpdateWire();
       myShape.Nullify();
     }
-#ifdef DEB
+#ifdef OCCT_DEBUG
     if (StatusSelfIntersection (ShapeExtend_DONE5))
       cout<<"Warning: ShapeFix_Wire::FixIntersection: Non-adjacent intersection fixed (split-"
         <<NbSplit<<", cut-"<<NbCut<<", removed-"<<NbRemoved<<")"<<endl;
@@ -937,7 +966,7 @@ Standard_Boolean ShapeFix_Wire::FixSelfIntersection()
       myStatusSelfIntersection |= ShapeExtend::EncodeStatus ( ShapeExtend_FAIL3 );
     if(isDone)
       myStatusSelfIntersection |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE5 );
-#ifdef DEB
+#ifdef OCCT_DEBUG
     if (StatusSelfIntersection (ShapeExtend_DONE5))
       cout << "Warning: ShapeFix_Wire::FixSelfIntersection: Non ajacent intersection fixed" << endl;
 #endif	  
@@ -1283,7 +1312,7 @@ Standard_Boolean ShapeFix_Wire::FixShifted()
       vclosed = Standard_True;
       VRange = aBaseCrv->Period();
       IsVCrvClosed = Standard_True;
-#ifdef DEB
+#ifdef OCCT_DEBUG
       cout << "Warning: ShapeFix_Wire::FixShifted set vclosed True for Surface of Revolution" << endl;
 #endif
     }
@@ -1332,12 +1361,20 @@ Standard_Boolean ShapeFix_Wire::FixShifted()
     TopoDS_Edge E1 = sbwd->Edge ( n1 );
     TopoDS_Edge E2 = sbwd->Edge ( n2 );
 
-    if ( BRep_Tool::Degenerated(E1) || BRep_Tool::Degenerated(E2) ) {
-      if ( ! degstop ) { stop = n2; degstop = Standard_True; }
+    if ( BRep_Tool::Degenerated(E1) || BRep_Tool::Degenerated(E2) )
+    {
+      if ( ! degstop )
+      {
+        stop = n2;
+        degstop = Standard_True;
+      }
       continue;
     }
 
     TopoDS_Vertex V = sae.FirstVertex ( E2 );
+    if (V.IsNull())
+      continue;
+
     gp_Pnt p = BRep_Tool::Pnt ( V );
   
     Standard_Real a1 = 0., b1 = 0., a2 = 0., b2 = 0.;
@@ -1374,82 +1411,100 @@ Standard_Boolean ShapeFix_Wire::FixShifted()
       }
     }
 
-    if ( isDeg ) {
-      if ( ! degstop ) { stop = n2; degstop = Standard_True; }
-      if ( ! degn2 ) { degn2 = n2; pdeg = p; }
-      else if ( pdeg.SquareDistance(p) < Precision()*Precision() ) {
-        degn2 = n2;	
-//	if ( stop < n2 ) { stop = n2; degstop = Standard_True; }
+    if ( isDeg )
+    {
+      if ( ! degstop )
+      {
+        stop = n2;
+        degstop = Standard_True;
       }
-      else {
-	Standard_Real ax1 = 0., bx1 = 0., ax2 = 0., bx2 = 0.;
-	Handle(Geom2d_Curve) cx1, cx2;
-	if ( ( c2d1.IsNull() && ! sae.PCurve ( E1, Face(), c2d1, a1, b1, Standard_True ) ) ||
-	     ( c2d2.IsNull() && ! sae.PCurve ( E2, Face(), c2d2, a2, b2, Standard_True ) ) ||
-	     ! sae.PCurve ( sbwd->Edge ( degn2 >1 ? degn2-1 : nb ), Face(), cx1, ax1, bx1, Standard_True ) ||
-	     ! sae.PCurve ( sbwd->Edge ( degn2 ), Face(), cx2, ax2, bx2, Standard_True ) ) {
-	  myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_FAIL1 );
-	  continue;
-	}
-	gp_Pnt2d pd1 = cx1->Value ( bx1 );
-	gp_Pnt2d pd2 = cx2->Value ( ax2 );
-	gp_Pnt2d pn1 = c2d1->Value ( b1 );
-	gp_Pnt2d pn2 = c2d2->Value ( a2 );
-	gp_Vec2d x(0.,0.); // shift vector
-	Standard_Real period;
-	if ( uclosed ) { x.SetX ( 1. ); period = URange; }
-	else { x.SetY ( 1. ); period = VRange; }
-	Standard_Real rot1 = ( pn1.XY() - pd2.XY() ) ^ x.XY();
-	Standard_Real rot2 = ( pd1.XY() - pn2.XY() ) ^ x.XY();
-	Standard_Real scld = ( pd2.XY() - pd1.XY() ) * x.XY();
-	Standard_Real scln = ( pn2.XY() - pn1.XY() ) * x.XY();
-	if ( rot1 * rot2 < -::Precision::PConfusion() && 
-	     scld * scln < -::Precision::PConfusion() && 
-	     Abs ( scln ) > 0.1 * period && Abs ( scld ) > 0.1 * period && 
-	     rot1 * scld > ::Precision::PConfusion() && 
-	     rot2 * scln > ::Precision::PConfusion() ) {
-	  // abv 02 Mar 00: trying more sophisticated analysis (ie_exhaust-A.stp #37520)
-	  Standard_Real sign = ( rot2 >0 ? 1. : -1. );
-	  Standard_Real deep1 = Min ( sign * ( pn2.XY() * x.XY() ),
-				Min ( sign * ( pd1.XY() * x.XY() ),
-				Min ( sign * ( c2d2->Value(b2 ).XY() * x.XY() ),
-				Min ( sign * (  cx1->Value(ax1).XY() * x.XY() ),
-				Min ( sign * ( c2d2->Value(0.5*(a2 +b2 )).XY() * x.XY() ),
-				      sign * (  cx1->Value(0.5*(ax1+bx1)).XY() * x.XY() ) ) ) ) ) );
-	  Standard_Real deep2 = Max ( sign * ( pn1.XY() * x.XY() ),
-				Max ( sign * ( pd2.XY() * x.XY() ),
-				Max ( sign * ( c2d1->Value(a1 ).XY() * x.XY() ),
-				Max ( sign * (  cx2->Value(bx2).XY() * x.XY() ),
-				Max ( sign * ( c2d1->Value(0.5*(a1 +b1 )).XY() * x.XY() ),
-				      sign * (  cx2->Value(0.5*(ax2+bx2)).XY() * x.XY() ) ) ) ) ) );
-	  Standard_Real deep = deep2 - deep1; // estimated current size of wire by x
-	  // pdn 30 Oct 00: trying correct period [0,period] (trj5_k1-tc-203.stp #4698)
-	  Standard_Real dx = ShapeAnalysis::AdjustToPeriod ( deep, ::Precision::PConfusion(), period+::Precision::PConfusion()); 
-	  x *= ( scld >0 ? -dx : dx );
-//	  x *= ( Abs(scld-scln) > 1.5 * period ? 2. : 1. ) *
-//	       ( scld >0 ? -period : period );
-	  gp_Trsf2d Shift;
-	  Shift.SetTranslation ( x );
-	  for ( Standard_Integer k=degn2; ; k++ ) {
-	    if ( k > nb ) k = 1;
-	    if ( k == n2 ) break;
-	    TopoDS_Edge edge = sbwd->Edge ( k );
-	    if ( ! sae.PCurve ( edge, Face(), cx1, ax1, bx1, Standard_True ) ) continue;
-	    //cx1->Transform ( Shift );
-            // skl 15.05.2002 for OCC208 (if few edges have reference to one pcurve)
-            Handle(Geom2d_Curve) cx1new = Handle(Geom2d_Curve)::DownCast(cx1->Transformed(Shift));
-            sbe.ReplacePCurve(edge,cx1new,Face());
-	    UpdateEdgeUVPoints ( edge, Face() );
-	  }
-	  myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE1 );
-#ifdef DEB
-	  cout << "Info: ShapeFix_Wire::FixShifted(): bi - meridian case fixed" << endl;
+
+      if ( ! degn2 )
+      {
+        degn2 = n2;
+        pdeg = p;
+      }
+      else
+      {
+        if ( pdeg.SquareDistance(p) < Precision() * Precision() )
+        {
+          degn2 = n2;
+          //if ( stop < n2 ) { stop = n2; degstop = Standard_True; }
+        }
+        else
+        {
+          Standard_Real ax1 = 0., bx1 = 0., ax2 = 0., bx2 = 0.;
+          Handle(Geom2d_Curve) cx1, cx2;
+          if (  ( c2d1.IsNull() && ! sae.PCurve ( E1, Face(), c2d1, a1, b1, Standard_True ) ) ||
+                ( c2d2.IsNull() && ! sae.PCurve ( E2, Face(), c2d2, a2, b2, Standard_True ) ) ||
+                ! sae.PCurve ( sbwd->Edge ( degn2 >1 ? degn2-1 : nb ), Face(), cx1, ax1, bx1, Standard_True ) ||
+                ! sae.PCurve ( sbwd->Edge ( degn2 ), Face(), cx2, ax2, bx2, Standard_True ) )
+          {
+            myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_FAIL1 );
+            continue;
+          }
+          gp_Pnt2d pd1 = cx1->Value ( bx1 );
+          gp_Pnt2d pd2 = cx2->Value ( ax2 );
+          gp_Pnt2d pn1 = c2d1->Value ( b1 );
+          gp_Pnt2d pn2 = c2d2->Value ( a2 );
+          gp_Vec2d x(0.,0.); // shift vector
+          Standard_Real period;
+          if ( uclosed ) { x.SetX ( 1. ); period = URange; }
+          else { x.SetY ( 1. ); period = VRange; }
+          Standard_Real rot1 = ( pn1.XY() - pd2.XY() ) ^ x.XY();
+          Standard_Real rot2 = ( pd1.XY() - pn2.XY() ) ^ x.XY();
+          Standard_Real scld = ( pd2.XY() - pd1.XY() ) * x.XY();
+          Standard_Real scln = ( pn2.XY() - pn1.XY() ) * x.XY();
+          if (  rot1 * rot2 < -::Precision::PConfusion() && 
+                scld * scln < -::Precision::PConfusion() && 
+                Abs ( scln ) > 0.1 * period && Abs ( scld ) > 0.1 * period && 
+                rot1 * scld > ::Precision::PConfusion() && 
+                rot2 * scln > ::Precision::PConfusion() )
+          {
+            // abv 02 Mar 00: trying more sophisticated analysis (ie_exhaust-A.stp #37520)
+            Standard_Real sign = ( rot2 >0 ? 1. : -1. );
+            Standard_Real deep1 = Min ( sign * ( pn2.XY() * x.XY() ),
+                                  Min ( sign * ( pd1.XY() * x.XY() ),
+                                  Min ( sign * ( c2d2->Value(b2 ).XY() * x.XY() ),
+                                  Min ( sign * (  cx1->Value(ax1).XY() * x.XY() ),
+                                  Min ( sign * ( c2d2->Value(0.5*(a2 +b2 )).XY() * x.XY() ),
+                                        sign * (  cx1->Value(0.5*(ax1+bx1)).XY() * x.XY() ) ) ) ) ) );
+            Standard_Real deep2 = Max ( sign * ( pn1.XY() * x.XY() ),
+                                  Max ( sign * ( pd2.XY() * x.XY() ),
+                                  Max ( sign * ( c2d1->Value(a1 ).XY() * x.XY() ),
+                                  Max ( sign * (  cx2->Value(bx2).XY() * x.XY() ),
+                                  Max ( sign * ( c2d1->Value(0.5*(a1 +b1 )).XY() * x.XY() ),
+                                        sign * (  cx2->Value(0.5*(ax2+bx2)).XY() * x.XY() ) ) ) ) ) );
+            Standard_Real deep = deep2 - deep1; // estimated current size of wire by x
+            // pdn 30 Oct 00: trying correct period [0,period] (trj5_k1-tc-203.stp #4698)
+            Standard_Real dx = ShapeAnalysis::AdjustToPeriod ( deep, ::Precision::PConfusion(), period+::Precision::PConfusion()); 
+            x *= ( scld >0 ? -dx : dx );
+            //x *= ( Abs(scld-scln) > 1.5 * period ? 2. : 1. ) *
+            //     ( scld >0 ? -period : period );
+            gp_Trsf2d Shift;
+            Shift.SetTranslation ( x );
+            for ( Standard_Integer k=degn2; ; k++ )
+            {
+              if ( k > nb ) k = 1;
+              if ( k == n2 ) break;
+              TopoDS_Edge edge = sbwd->Edge ( k );
+              if ( ! sae.PCurve ( edge, Face(), cx1, ax1, bx1, Standard_True ) ) continue;
+              //cx1->Transform ( Shift );
+              // skl 15.05.2002 for OCC208 (if few edges have reference to one pcurve)
+              Handle(Geom2d_Curve) cx1new = Handle(Geom2d_Curve)::DownCast(cx1->Transformed(Shift));
+              sbe.ReplacePCurve(edge,cx1new,Face());
+              UpdateEdgeUVPoints ( edge, Face() );
+            }
+            myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE1 );
+#ifdef OCCT_DEBUG
+            cout << "Info: ShapeFix_Wire::FixShifted(): bi - meridian case fixed" << endl;
 #endif
-          continue;
-	}
-//	degn2 = n2; pdeg = p; // ie_exhaust-A.stp #37520
+            continue;
+          }
+          //degn2 = n2; pdeg = p; // ie_exhaust-A.stp #37520
+        }
       }
-/*	
+/*
       // pdn to fix half sphere
       TopoDS_Vertex VE = sae.LastVertex ( E2 );
       gp_Pnt pe = BRep_Tool::Pnt ( VE );
@@ -1738,14 +1793,14 @@ static Standard_Boolean RemoveLoop (TopoDS_Edge &E, const TopoDS_Face &face,
   if ( ! sae.PCurve ( E, face, c2d, a, b, Standard_False ) ) 
     return Standard_False;
 
-#ifdef DEB
+#ifdef OCCT_DEBUG
   cout << "Cut Loop: params (" << t1 << ", " << t2;
 #endif
   GeomAdaptor_Curve GAC ( crv, f, l );
   Standard_Real dt = tolfact * GAC.Resolution(prec);
   t1 -= dt; //1e-3;//::Precision::PConfusion();
   t2 += dt; //1e-3;//::Precision::PConfusion();
-#ifdef DEB
+#ifdef OCCT_DEBUG
   cout << ") -> (" << t1 << ", " << t2 << ")" << endl;
 #endif
       
@@ -1815,7 +1870,7 @@ static Standard_Boolean RemoveLoop (TopoDS_Edge &E, const TopoDS_Face &face,
       if ( ! TryNewPCurve ( E, face, bs, a, b, newtol ) ) return Standard_False;
   
     Standard_Real tol = BRep_Tool::Tolerance ( E );
-#ifdef DEB
+#ifdef OCCT_DEBUG
     cout << "Cut Loop: tol orig " << tol << ", prec " << prec << ", new tol " << newtol << endl;
 #endif
     if ( newtol > Max ( prec, tol ) ) return Standard_False;
@@ -1925,7 +1980,7 @@ static Standard_Boolean RemoveLoop (TopoDS_Edge &E, const TopoDS_Face &face,
                                     TopoDS_Edge &E1,
                                     TopoDS_Edge &E2)
 {
-#ifdef DEB
+#ifdef OCCT_DEBUG
   cout<<"Info: ShapeFix_Wire::FixSelfIntersection : Try insert vertex"<<endl;
 #endif
 
@@ -2331,81 +2386,100 @@ Standard_Boolean ShapeFix_Wire::FixIntersectingEdges (const Standard_Integer num
     Standard_Real rad = errors.Value(i);
     Standard_Real newtol = 1.0001 * ( pnt.Distance ( pint ) + rad );
 
-//    GeomAdaptor_Surface& Ads = myAnalyzer->Surface()->Adaptor3d()->ChangeSurface();
+    //GeomAdaptor_Surface& Ads = myAnalyzer->Surface()->Adaptor3d()->ChangeSurface();
 
     //:r8 abv 12 Apr 99: try increasing tolerance of edge
-    if ( ! myTopoMode && newtol > tol ) {
+
+    Standard_Boolean locMayEdit = myTopoMode;
+    // Always try to modify the tolerance firstly as a better solution
+    if ( /*! myTopoMode &&*/ newtol > tol ) {
       Standard_Real te1 = rad + ComputeLocalDeviation (E1, pint, pnt,
-						 param1, ( isForward1 ? b1 : a1 ), Face() );
+        param1, ( isForward1 ? b1 : a1 ), Face() );
       Standard_Real te2 = rad + ComputeLocalDeviation (E2, pint, pnt, 
-						 ( isForward2 ? a2 : b2 ), param2, Face() );
+        ( isForward2 ? a2 : b2 ), param2, Face() );
       Standard_Real maxte = Max ( te1, te2 );
       if ( maxte < MaxTolerance() && maxte < newtol ) {
-	if ( BRep_Tool::Tolerance(E1) < te1 || BRep_Tool::Tolerance(E2) < te2 ) {
-//#ifdef DEB
-//	  cout << "Warning: ShapeFix_Wire::FixIE: edges tolerance increased: (" <<
-//	    te1 << ", " << te2 << ") / " << newtol << endl;
-//#endif
-	  B.UpdateEdge ( E1, 1.000001 * te1 );
-	  B.UpdateVertex ( sae.FirstVertex ( E1 ), 1.000001 * te1 );
-	  B.UpdateVertex ( sae.LastVertex  ( E1 ), 1.000001 * te1 );
-	  B.UpdateEdge ( E2, 1.000001 * te2 );
-	  B.UpdateVertex ( sae.FirstVertex ( E2 ), 1.000001 * te2 );
-	  B.UpdateVertex ( sae.LastVertex  ( E2 ), 1.000001 * te2 );
-	  myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE6 );
-	}
-	newtol = 1.000001 * maxte;
+        if ( BRep_Tool::Tolerance(E1) < te1 || BRep_Tool::Tolerance(E2) < te2 ) {
+#ifdef OCCT_DEBUG
+          cout << "Warning: ShapeFix_Wire::FixIE: edges tolerance increased: (" <<
+            te1 << ", " << te2 << ") / " << newtol << endl;
+#endif
+          B.UpdateEdge ( E1, 1.000001 * te1 );
+          B.UpdateVertex ( sae.FirstVertex ( E1 ), 1.000001 * te1 );
+          B.UpdateVertex ( sae.LastVertex  ( E1 ), 1.000001 * te1 );
+          B.UpdateEdge ( E2, 1.000001 * te2 );
+          B.UpdateVertex ( sae.FirstVertex ( E2 ), 1.000001 * te2 );
+          B.UpdateVertex ( sae.LastVertex  ( E2 ), 1.000001 * te2 );
+
+          myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE6 );
+          locMayEdit = Standard_False;
+        }
+        newtol = 1.000001 * maxte;
       }
     }
     
-    if ( myTopoMode || newtol <= MaxTolerance() ) {
+    if ( locMayEdit || newtol <= MaxTolerance() )
+    {
       prevRange1 = newRange1; 
       prevRange2 = newRange2;
-      Standard_Boolean locMayEdit = myTopoMode;
-      if ( myTopoMode ) { //:j6 abv 7 Dec 98: ProSTEP TR10 r0601_id.stp #57676 & #58586: do not cut edges because of influence on adjacent faces
+      if ( locMayEdit )
+      {
+        newtol = 1.0001 * ( pnt.Distance ( pint ) + rad );
+        //:j6 abv 7 Dec 98: ProSTEP TR10 r0601_id.stp #57676 & #58586: do not cut edges because of influence on adjacent faces
         ShapeFix_SplitTool aTool;
-        //if ( ! ShapeFix::CutEdge ( E1, ( isForward1 ? a1 : b1 ), param1, Face(), IsCutLine ) ) {
-	if ( ! aTool.CutEdge ( E1, ( isForward1 ? a1 : b1 ), param1, Face(), IsCutLine ) ) {
-	  if ( V1.IsSame ( Vp ) )
-	    myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE3 );
-	  else locMayEdit = Standard_False;
-	}
-	else cutEdge1 = Standard_True; //:h4
-	//if ( ! ShapeFix::CutEdge ( E2, ( isForward2 ? b2 : a2 ), param2, Face(), IsCutLine ) ) {
-	if ( ! aTool.CutEdge ( E2, ( isForward2 ? b2 : a2 ), param2, Face(), IsCutLine ) ) {
-	  if ( V2.IsSame ( Vn ) ) 
-	    myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE4 );
-	  else locMayEdit = Standard_False;
-	}
-	else cutEdge2 = Standard_True; //:h4
+        
+        if ( ! aTool.CutEdge ( E1, ( isForward1 ? a1 : b1 ), param1, Face(), IsCutLine ) ) {
+          if ( V1.IsSame ( Vp ) )
+            myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE3 );
+          else locMayEdit = Standard_False;
+        }
+        else cutEdge1 = Standard_True; //:h4
+        
+        if ( ! aTool.CutEdge ( E2, ( isForward2 ? b2 : a2 ), param2, Face(), IsCutLine ) ) {
+          if ( V2.IsSame ( Vn ) ) 
+            myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE4 );
+          else locMayEdit = Standard_False;
+        }
+        else cutEdge2 = Standard_True; //:h4
       }
-      if ( locMayEdit &&
-	   newRange1 <= prevRange1 && newRange2 <= prevRange2 && //rln 09/01/98
-	   BRep_Tool::SameParameter ( E1 ) &&
-	   BRep_Tool::SameParameter ( E2 ) ) {
-	myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE2 );
-	pnt = pint;
-	if ( tol <= rad ) {
-	  myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE1 );
-	  tol = 1.001 * rad;
-	}
+
+      if (  locMayEdit &&
+            newRange1 <= prevRange1 && newRange2 <= prevRange2 && //rln 09/01/98
+            BRep_Tool::SameParameter ( E1 ) &&
+            BRep_Tool::SameParameter ( E2 ) )
+      {
+        myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE2 );
+        pnt = pint;
+        if ( tol <= rad ) {
+          myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE1 );
+          tol = 1.001 * rad;
+        }
       }
-      else if(IsCutLine) {
-	myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE2 );
-	pnt = pint;
-	if ( tol <= rad ) {
-	  myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE1 );
-	  tol = 1.001 * rad;
-	}
-      }
-      else { // else increase tolerance
-	if (tol < newtol) { //rln 07.04.99 CCI60005-brep.igs
-	  myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE1 );
-	  tol = newtol;
-	}
+      else
+      {
+        if(IsCutLine)
+        {
+          myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE2 );
+          pnt = pint;
+          if ( tol <= rad ) {
+            myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE1 );
+            tol = 1.001 * rad;
+          }
+        }
+        else
+        { // else increase tolerance
+          if (tol < newtol)
+          { //rln 07.04.99 CCI60005-brep.igs
+            myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE1 );
+            tol = newtol;
+          }
+        }
       }
     }
-    else myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_FAIL2 );
+    else
+    {
+      myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_FAIL2 );
+    }
   }
 
   if ( ! LastFixStatus ( ShapeExtend_DONE ) ) return Standard_False;
@@ -2681,16 +2755,17 @@ static Standard_Boolean TryBendingPCurve (const TopoDS_Edge &E, const TopoDS_Fac
       else return Standard_False;
     }
     c2d = bs;
+
+    if ( ! TryNewPCurve ( E, face, c2d, first, last, tol ) ) return Standard_False;
   }
   catch ( Standard_Failure ) {
-#ifdef DEB
+#ifdef OCCT_DEBUG
     cout << "Warning: ShapeFix_Wire::FixLacking: Exception in Geom2d_BSplineCurve::Segment()" << endl;
 #endif
     return Standard_False;
   }
   }
-  
-  if ( ! TryNewPCurve ( E, face, c2d, first, last, tol ) ) return Standard_False;
+
   return Standard_True;
 }
 
@@ -2915,7 +2990,7 @@ Standard_Boolean ShapeFix_Wire::FixLacking (const Standard_Integer num,
     // insert new edge
     if ( doAddDegen ) {
       myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE3 );
-#ifdef DEB
+#ifdef OCCT_DEBUG
       cout << "Warning: ShapeFix_Wire::FixLacking: degenerated edge added" << endl;
 #endif
     }
@@ -2948,7 +3023,7 @@ Standard_Boolean ShapeFix_Wire::FixLacking (const Standard_Integer num,
     FixSelfIntersectingEdge ( n1 );
     FixSelfIntersectingEdge ( n2 );
     FixIntersectingEdges ( n2 ); //skl 24.04.2003 for OCC58
-#ifdef DEB
+#ifdef OCCT_DEBUG
     cout << "Info: ShapeFix_Wire::FixLacking: Bending pcurves" << endl;
 #endif
     myLastFixStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE5 );

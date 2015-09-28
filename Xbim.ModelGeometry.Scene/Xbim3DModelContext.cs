@@ -6,12 +6,10 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.IO;
 using System.Linq;
-using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using Newtonsoft.Json;
 using Xbim.Common;
-using Xbim.Common.Exceptions;
 using Xbim.Common.Geometry;
 using Xbim.Common.Logging;
 using Xbim.Common.XbimExtensions;
@@ -20,7 +18,6 @@ using Xbim.Ifc2x3.Extensions;
 using Xbim.Ifc2x3.GeometricModelResource;
 using Xbim.Ifc2x3.GeometryResource;
 using Xbim.Ifc2x3.Kernel;
-using Xbim.Ifc2x3.MeasureResource;
 using Xbim.Ifc2x3.PresentationAppearanceResource;
 using Xbim.Ifc2x3.ProductExtension;
 using Xbim.Ifc2x3.RepresentationResource;
@@ -58,54 +55,65 @@ namespace Xbim.ModelGeometry.Scene
             }
         }
 
-        private struct RepresentationItemGeometricHashKey
-        {
-            private readonly int _hash;
-            private readonly IfcRepresentationItem _item;
-
-            public RepresentationItemGeometricHashKey(IfcRepresentationItem item)
-            {
-                _item = item;
-                try
+        /*
+                private struct RepresentationItemGeometricHashKey
                 {
-                    _hash = _item.GetGeometryHashCode();
-                }
-                catch (XbimGeometryException eg)
-                {
-                    Logger.WarnFormat("HashCode error in representation of type {0}, err = {1}", item.GetType().Name,
-                        eg.Message);
-                    _hash = 0;
-                }
-            }
+                    private readonly int _hash;
+                    private readonly int _item;
+                    private readonly IModel _model;
 
-            public override int GetHashCode()
-            {
-                return _hash;
-            }
+                    public RepresentationItemGeometricHashKey(IfcRepresentationItem item)
+                    {
+                        _item = item.EntityLabel;
+                        _model = item.ModelOf;
+                        try
+                        {
+                            _hash = item.GetGeometryHashCode();
+                        }
+                        catch (XbimGeometryException eg)
+                        {
+                            Logger.WarnFormat("HashCode error in representation of type {0}, err = {1}", item.GetType().Name,
+                                eg.Message);
+                            _hash = 0;
+                        }
+                    }
 
-            public override bool Equals(object obj)
-            {
-                if (!(obj is RepresentationItemGeometricHashKey)) return false;
-                try
-                {
-                    return _item.GeometricEquals(((RepresentationItemGeometricHashKey) obj)._item);
+                    public IfcRepresentationItem RepresentationItem 
+                    {
+                        get { return _model.InstancesLocal[_item] as IfcRepresentationItem; }
+                    }
+
+                    public override int GetHashCode()
+                    {
+                        return _hash;
+                    }
+
+           
+                    public override bool Equals(object obj)
+                    {
+                        if (!(obj is RepresentationItemGeometricHashKey)) return false;
+                        try
+                        {
+                   
+                            return RepresentationItem.GeometricEquals(((RepresentationItemGeometricHashKey)obj).RepresentationItem);
+                        }
+                        catch (XbimGeometryException eg)
+                        {
+                            Logger.WarnFormat("Equality error in representation of type {0}, err = {1}",
+                                _item.GetType().Name,
+                                eg.Message);
+                            return false;
+                        }
+                    }
+
+                    public override string ToString()
+                    {
+                        return string.Format("{0} Hash[{1}]", _item, _hash);
+                    }
                 }
-                catch (XbimGeometryException eg)
-                {
-                    Logger.WarnFormat("Equality error in representation of type {0}, err = {1}",
-                        _item.GetType().Name,
-                        eg.Message);
-                    return false;
-                }
-            }
+        */
 
-            public override string ToString()
-            {
-                return string.Format("{0} Hash[{1}]", _item, _hash);
-            }
-        }
-
-        private class XbimCreateContextHelper
+        private class XbimCreateContextHelper : IDisposable
         {
             internal String InitialiseError;
             internal ConcurrentDictionary<int, GeometryReference> ShapeLookup;
@@ -115,30 +123,32 @@ namespace Xbim.ModelGeometry.Scene
                 Model = model;
                 Contexts = contexts;
             }
+          
             /// <summary>
             /// The key is the Ifc label of the geometry the value is the database record number
             /// </summary>
-            internal ConcurrentDictionary<int,int> GeometryShapeLookup { get; set; }
-            internal XbimModel Model { get; private set; }
-            internal IfcRepresentationContextCollection Contexts { get; private set; }
-            internal ParallelOptions ParallelOptions { get; set; }
-            internal XbimPlacementTree PlacementTree { get; set; }
-            internal HashSet<int> MappedShapeIds { get; set; }
-            internal HashSet<int> FeatureElementShapeIds { get; set; }
-            internal List<IGrouping<IfcElement, IfcFeatureElement>> OpeningsAndProjections { get; set; }
-            internal HashSet<int> VoidedShapeIds { get; set; }
-            internal HashSet<int> ProductShapeIds { get; set; }
+            internal ConcurrentDictionary<int,int> GeometryShapeLookup { get; private set; }
+
+            private XbimModel Model { get; set; }
+            private IfcRepresentationContextCollection Contexts { get; set; }
+            internal ParallelOptions ParallelOptions { get; private set; }
+            internal XbimPlacementTree PlacementTree { get; private set; }
+            internal HashSet<int> MappedShapeIds { get; private set; }
+            internal HashSet<int> FeatureElementShapeIds { get; private set; }
+            internal List<IGrouping<IfcElement, IfcFeatureElement>> OpeningsAndProjections { get; private set; }
+            private HashSet<int> VoidedShapeIds { get; set; }
+            internal HashSet<int> ProductShapeIds { get; private set; }
             internal ConcurrentDictionary<int, IXbimGeometryObject> CachedGeometries { get; private set; }
-            internal int Total { get; set; }
+            internal int Total { get; private set; }
             internal int PercentageParsed { get; set; }
             internal int Tally { get; set; }
-            internal Dictionary<int, int> SurfaceStyles { get; set; }
+            internal Dictionary<int, int> SurfaceStyles { get; private set; }
 
             internal Dictionary<IfcRepresentationContext, ConcurrentQueue<XbimBBoxClusterElement>> Clusters { get; private set;
             }
 
-            internal ConcurrentDictionary<int, List<GeometryReference>> MapsWritten { get; set; }
-            internal ConcurrentDictionary<int, XbimMatrix3D> MapTransforms { get; set; }
+            internal ConcurrentDictionary<int, List<GeometryReference>> MapsWritten { get; private set; }
+            internal ConcurrentDictionary<int, XbimMatrix3D> MapTransforms { get; private set; }
 
             internal IXbimGeometryObject GetGeometryFromCache(XbimShapeInstance instance)
             {
@@ -174,6 +184,7 @@ namespace Xbim.ModelGeometry.Scene
                     GetOpeningsAndProjections();
                     VoidedShapeIds = new HashSet<int>();
                     ParallelOptions = new ParallelOptions();
+                    //ParallelOptions.MaxDegreeOfParallelism = 8;
                     CachedGeometries = new ConcurrentDictionary<int, IXbimGeometryObject>();
                     foreach (var voidedShapeId in OpeningsAndProjections.Select(op => op.Key.EntityLabel))
                         VoidedShapeIds.Add(voidedShapeId);
@@ -203,7 +214,7 @@ namespace Xbim.ModelGeometry.Scene
 
             private void GetOpeningsAndProjections()
             {
-                var openings = Model.Instances.OfType<IfcRelVoidsElement>()
+                var openings = Model.InstancesLocal.OfType<IfcRelVoidsElement>()
                     .Where(
                         r =>
                             r.RelatingBuildingElement.Representation != null &&
@@ -216,7 +227,7 @@ namespace Xbim.ModelGeometry.Scene
                                 feature = (IfcFeatureElement) f.RelatedOpeningElement
                             });
 
-                var projections = Model.Instances.OfType<IfcRelProjectsElement>()
+                var projections = Model.InstancesLocal.OfType<IfcRelProjectsElement>()
                     .Where(
                         r => r.RelatingElement.Representation != null && r.RelatedFeatureElement.Representation != null)
                     .Select(
@@ -233,7 +244,7 @@ namespace Xbim.ModelGeometry.Scene
             {
                 //get all the surface styles
 
-                var styledItemsGroup = Model.Instances
+                var styledItemsGroup = Model.InstancesLocal
                     .OfType<IfcStyledItem>()
                     .Where(s => s.Item != null)
                     .GroupBy(s => s.Item.EntityLabel);
@@ -259,7 +270,7 @@ namespace Xbim.ModelGeometry.Scene
                 MappedShapeIds = new HashSet<int>();
                 FeatureElementShapeIds = new HashSet<int>();
                 ProductShapeIds = new HashSet<int>();
-                foreach (var product in Model.Instances.OfType<IfcProduct>().Where(p => p.Representation != null))
+                foreach (var product in Model.InstancesLocal.OfType<IfcProduct>(true).Where(p => p.Representation != null))
                 {
                     var isFeatureElementShape = product is IfcFeatureElement ||
                                                 VoidedShapeIds.Contains(product.EntityLabel);
@@ -305,18 +316,37 @@ namespace Xbim.ModelGeometry.Scene
                     }
                 }
             }
+
+            public void Dispose()
+            {
+                foreach (var cachedGeom in CachedGeometries)
+                {
+                    cachedGeom.Value.Dispose();
+                }
+            }
         }
 
         #endregion
 
-        private static readonly ILogger Logger = LoggerFactory.GetLogger();
+        public static readonly ILogger Logger = LoggerFactory.GetLogger();
         private readonly IfcRepresentationContextCollection _contexts;
-        private readonly IXbimGeometryCreator _engine;
+        private IXbimGeometryCreator _Engine;
+
+        private IXbimGeometryCreator Engine
+        {
+            get
+            {
+                if (_Engine == null)
+                    _Engine = new XbimGeometryEngine();
+                return _Engine;
+            }
+        }
         private readonly XbimModel _model;
 
         private bool _contextIsPersisted;
-
-
+        //The maximum extent for any dimension of any products bouding box 
+        private double _maxXyz;
+       
         /// <summary>
         ///     Initialises a model context from the model
         /// </summary>
@@ -326,11 +356,11 @@ namespace Xbim.ModelGeometry.Scene
         public Xbim3DModelContext(XbimModel model, string contextType = "model", string contextIdentifier = "body")
         {
             _model = model;
-            _engine = new XbimGeometryEngine();
+            
             //Get the required context
             //check for old versions
             var contexts =
-                model.Instances.OfType<IfcGeometricRepresentationContext>()
+                model.InstancesLocal.OfType<IfcGeometricRepresentationContext>()
                     .Where(
                         c =>
                             String.Compare(c.ContextType, contextType, true) == 0 ||
@@ -352,7 +382,7 @@ namespace Xbim.ModelGeometry.Scene
             {
                 //have a look for older standards
                 contexts =
-                    model.Instances.OfType<IfcGeometricRepresentationContext>()
+                    model.InstancesLocal.OfType<IfcGeometricRepresentationContext>()
                         .Where(
                             c =>
                                 String.Compare(c.ContextType, "design", true) == 0 ||
@@ -365,14 +395,10 @@ namespace Xbim.ModelGeometry.Scene
                 }
                 else
                 {
-                    contexts = model.Instances.OfType<IfcGeometricRepresentationContext>().ToList();
+                    contexts = model.InstancesLocal.OfType<IfcGeometricRepresentationContext>().ToList();
                     if (contexts.Any())
                     {
-                        var ctxtString = "";
-                        foreach (var ctxt in contexts)
-                        {
-                            ctxtString += ctxt.ContextType + " ";
-                        }
+                        var ctxtString = contexts.Aggregate("", (current, ctxt) => current + (ctxt.ContextType + " "));
                         if (string.IsNullOrWhiteSpace(ctxtString)) ctxtString = "$";
                         Logger.InfoFormat(
                             "Unable to find any Geometric Representation contexts with Context Type = {0} and Context Identifier = {1}, using  available Context Types '{2}'. NB This does not comply with IFC 2x2 or greater",
@@ -394,14 +420,15 @@ namespace Xbim.ModelGeometry.Scene
                 foreach (var context in contexts)
                 {
                     _contexts.Add(context);
-                    if (context.DefaultPrecision == 0)
-                        roundingPrecisions.Add(context, 0);
-                    else
-                        roundingPrecisions.Add(context, Math.Abs((int) Math.Log10(context.DefaultPrecision)));
+                    roundingPrecisions.Add(context,
+                        Math.Abs(context.DefaultPrecision) < 1e-9
+                            ? 0
+                            : Math.Abs((int) Math.Log10(context.DefaultPrecision)));
                     contextLookup.Add(GetContextId(context), context);
                 }
                 _contextIsPersisted = false;
             }
+            
         }
 
         /// <summary>
@@ -429,11 +456,14 @@ namespace Xbim.ModelGeometry.Scene
         /// <returns></returns>
         public bool CreateContext(XbimGeometryType geomStorageType = XbimGeometryType.Polyhedron, ReportProgressDelegate progDelegate = null)
         {
-            if (_contexts == null || _engine == null) return false;
+            if (_contexts == null || Engine == null) return false;
             if (_contextIsPersisted) return false; //already created it
 
 
-            var contextHelper = new XbimCreateContextHelper(_model, _contexts);
+            using (var contextHelper = new XbimCreateContextHelper(_model, _contexts))
+            {
+                
+            
             if (progDelegate != null) progDelegate(-1, "Initialise");
             if (!contextHelper.Initialise())
                 throw new Exception("Failed to initialise geometric context, " + contextHelper.InitialiseError);
@@ -445,7 +475,9 @@ namespace Xbim.ModelGeometry.Scene
                 using (
                     var writeToDb =
                         Task.Factory.StartNew(
+// ReSharper disable AccessToDisposedClosure
                             () => WriteShapeGeometriesToDatabase(contextHelper, shapeGeometries)))
+// ReSharper restore AccessToDisposedClosure
                 {
                     try
                     {  
@@ -462,50 +494,52 @@ namespace Xbim.ModelGeometry.Scene
             }
             
             WriteMappedItems(contextHelper, progDelegate);
-            
-            using (var features =
-                new BlockingCollection<Tuple<XbimShapeInstance, IXbimShapeGeometryData>>())
-            {
-                //start a new task to process features
-                HashSet<int> processed;
-                using (var writeToDb = Task.Factory.StartNew(() => WriteFeatureElementsToDatabase(features)))
-                {
-                    try
-                    {                     
-                        processed = WriteFeatureElements(contextHelper, features, progDelegate,geomStorageType);               
-                    }
-                    finally
-                    {
-                        //wait for the geometry shapes to be written
-                        features.CompleteAdding();
-                        writeToDb.Wait();
-                    }
-                }
-                var productsRemaining = _model.Instances.OfType<IfcProduct>()
-                    .Where(p => p.Representation != null && !processed.Contains(p.EntityLabel)).ToList();
 
-                if (progDelegate != null) progDelegate(-1, "WriteProductShapes");
-                WriteProductShapes(contextHelper, productsRemaining);
-                if (progDelegate != null) progDelegate(101, "WriteProductShapes");
-                //Write out the actual representation item reference count
-                if (progDelegate != null) progDelegate(-1, "WriteShapeGeometryReferenceCountToDb");
-                WriteShapeGeometryReferenceCountToDb();
-                if (progDelegate != null) progDelegate(101, "WriteShapeGeometryReferenceCountToDb");
-                //Write out the regions of the model
-                if (progDelegate != null) progDelegate(-1, "WriteRegionsToDb");
-                foreach (var cluster in contextHelper.Clusters)
+                using (var features =
+                    new BlockingCollection<Tuple<XbimShapeInstance, IXbimShapeGeometryData>>())
                 {
-                    WriteRegionsToDb(context: cluster.Key, elementsToCluster: cluster.Value,
-                        wcsMatrix3D: contextHelper.PlacementTree.WorldCoordinateSystem);
+                    //start a new task to process features
+                    HashSet<int> processed;
+// ReSharper disable once AccessToDisposedClosure
+                    using (var writeToDb = Task.Factory.StartNew(() => WriteFeatureElementsToDatabase(features)))
+                    {
+                        try
+                        {
+                            processed = WriteFeatureElements(contextHelper, features, progDelegate, geomStorageType);
+                        }
+                        finally
+                        {
+                            //wait for the geometry shapes to be written
+                            features.CompleteAdding();
+                            writeToDb.Wait();
+                        }
+                    }
+                    if (progDelegate != null) progDelegate(-1, "WriteProductShapes");
+                    var productsRemaining = _model.InstancesLocal.OfType<IfcProduct>()
+                        .Where(p => p.Representation != null && !processed.Contains(p.EntityLabel)).ToList();
+
+
+                    WriteProductShapes(contextHelper, productsRemaining);
+                    if (progDelegate != null) progDelegate(101, "WriteProductShapes");
+                    //Write out the actual representation item reference count
+                    if (progDelegate != null) progDelegate(-1, "WriteShapeGeometryReferenceCountToDb");
+                    WriteShapeGeometryReferenceCountToDb();
+                    if (progDelegate != null) progDelegate(101, "WriteShapeGeometryReferenceCountToDb");
+                    //Write out the regions of the model
+                    if (progDelegate != null) progDelegate(-1, "WriteRegionsToDb");
+                    foreach (var cluster in contextHelper.Clusters)
+                    {
+                        WriteRegionsToDb(cluster.Key, cluster.Value, contextHelper.PlacementTree.WorldCoordinateSystem);
+                    }
+                    if (progDelegate != null) progDelegate(101, "WriteRegionsToDb");
+                    _contextIsPersisted = true;
+
+                    return true;
                 }
-                if (progDelegate != null) progDelegate(101, "WriteRegionsToDb");
-                _contextIsPersisted = true;
-               
-                return true;
             }
         }
 
-        public string TempResult { get; set; }
+       
 
         private void WriteShapeGeometriesToDatabase(XbimCreateContextHelper contextHelper,
             BlockingCollection<IXbimShapeGeometryData> shapeGeometries)
@@ -530,6 +564,7 @@ namespace Xbim.ModelGeometry.Scene
                                 {
                                     BoundingBox = ((XbimShapeGeometry)shapeGeom).BoundingBox,
                                     GeometryId = geomTable.AddGeometry(shapeGeom)
+                                    
                                 };
                                 int styleLabel;
                                 contextHelper.SurfaceStyles.TryGetValue(shapeGeom.IfcShapeLabel, out styleLabel);
@@ -568,8 +603,6 @@ namespace Xbim.ModelGeometry.Scene
         private void WriteFeatureElementsToDatabase(
             BlockingCollection<Tuple<XbimShapeInstance, IXbimShapeGeometryData>> shapeFeatures)
         {
-            Tuple<XbimShapeInstance, IXbimShapeGeometryData> shapeFeature;
-
             using (var instanceTable = _model.GetShapeInstanceTable())
             {
                 using (var geomTable = _model.GetShapeGeometryTable())
@@ -586,6 +619,7 @@ namespace Xbim.ModelGeometry.Scene
                             {
                                 try
                                 {
+                                    Tuple<XbimShapeInstance, IXbimShapeGeometryData> shapeFeature;
                                     if (shapeFeatures.TryTake(out shapeFeature))
                                     {
                                         var shapeInstance = shapeFeature.Item1;
@@ -617,24 +651,26 @@ namespace Xbim.ModelGeometry.Scene
             }
         }
 
-        private HashSet<int> WriteFeatureElements(
-            XbimCreateContextHelper contextHelper,
+        private HashSet<int> WriteFeatureElements(XbimCreateContextHelper contextHelper,
             BlockingCollection<Tuple<XbimShapeInstance, IXbimShapeGeometryData>> features,
             ReportProgressDelegate progDelegate, XbimGeometryType geomType
             )
         {
             var processed = new HashSet<int>();
-            var localPercentageParsed = contextHelper.PercentageParsed;
-            var localTally = contextHelper.Tally;
-
+            var localPercentageParsed = 0;
+            var localTally = 0;
+            var featureCount = contextHelper.OpeningsAndProjections.Count;
             if (progDelegate != null) progDelegate(-1, "WriteFeatureElements (" + contextHelper.OpeningsAndProjections.Count + " elements)");
-            
-            Parallel.ForEach(contextHelper.OpeningsAndProjections,contextHelper.ParallelOptions, pair =>
-                //    foreach (IGrouping<IfcElement, IfcFeatureElement> pair in contextHelper.OpeningsAndProjections)
+
+            Parallel.ForEach(contextHelper.OpeningsAndProjections, contextHelper.ParallelOptions, pair =>
+            //        foreach (IGrouping<IfcElement, IfcFeatureElement> pair in contextHelper.OpeningsAndProjections)
             {
 
                 var element = pair.Key;
+
+
                 Interlocked.Increment(ref localTally);
+
                 try
                 {
                     var elementShapes = WriteProductShape(contextHelper, element, false).ToList();
@@ -644,79 +680,117 @@ namespace Xbim.ModelGeometry.Scene
                     {
 
                         //Get all the parts of this element into a set of solid geometries
-                        var elementGeom = _engine.CreateSolidSet();
+                        var elementGeom = Engine.CreateSolidSet();
                         foreach (var elemShape in elementShapes)
                         {
                             var geom = contextHelper.GetGeometryFromCache(elemShape);
 
                             elementGeom.Add(geom);
+
                             context = elemShape.RepresentationContext;
                             if (elemShape.StyleLabel > 0) styleId = elemShape.StyleLabel;
                         }
+
                         if (elementGeom.Count == 0)
                         {
                             Logger.WarnFormat(
-                                "WM003: An element #{0} does not have a valid solid representation, openings cannot be formed",
-                                element.EntityLabel);
-
+                                "WM003: {2}[#{0}]-{1} does not have a solid representation, openings cannot be formed",
+                                element.EntityLabel, element.Name, element.GetType().Name);
                         }
 
-                        //now build the openings
-                        var allOpenings = _engine.CreateSolidSet();
-                        var allProjections = _engine.CreateSolidSet();
-
-                        foreach (var feature in pair)
+                        if (elementGeom.Any() && elementGeom.IsSimplified)
+                            Logger.WarnFormat(
+                                "WM009: {2}[#{0}]-{1} is too complex, it will make interoperability difficult. It has been simplified, no openings have been cut. You should consider re-authoring it in your BIM tool",
+                                element.EntityLabel, element.Name, element.GetType().Name);
+                        
+                        if (elementGeom.Count > 0 && !elementGeom.IsSimplified)
                         {
-                            var opening = feature as IfcFeatureElementSubtraction;
-                            if (opening != null)
-                            {
-                                var openingShapes = WriteProductShape(contextHelper, opening, false).ToList();
+                            //now build the openings
+                            var allOpenings = Engine.CreateSolidSet();
+                            var allProjections = Engine.CreateSolidSet();
 
-                                foreach (var openingShape in openingShapes)
-                                {
-                                    var openingGeom = contextHelper.GetGeometryFromCache(openingShape);
-                                    if (openingGeom != null)
-                                        allOpenings.Add(openingGeom);
-                                }
-
-                                if (allOpenings.Count == 0)
-                                {
-                                    Logger.WarnFormat(
-                                        "WM004: {0} - #{1} is an opening that has been no 3D geometric form definition",
-                                        opening.GetType().Name, opening.EntityLabel);
-                                }
-                                processed.Add(opening.EntityLabel);
-                            }
-                            else
+                            foreach (var feature in pair)
                             {
-                                var addition = feature as IfcFeatureElementAddition;
-                                if (addition != null)
+                                var opening = feature as IfcFeatureElementSubtraction;
+                                if (opening != null)
                                 {
-                                    var projectionShapes = WriteProductShape(contextHelper, addition, false).ToList();
-                                    foreach (var projectionShape in projectionShapes)
+                                    var openingShapes = WriteProductShape(contextHelper, opening, false).ToList();
+
+                                    foreach (var openingShape in openingShapes)
                                     {
-                                        var projGeom = contextHelper.GetGeometryFromCache(projectionShape);
-                                        if (projGeom != null)
-                                            allProjections.Add(projGeom);
+                                        var openingGeom = contextHelper.GetGeometryFromCache(openingShape);
+                                        if (openingGeom != null)
+                                            allOpenings.Add(openingGeom);
                                     }
-                                    if (allProjections.Count == 0)
+
+                                    if (allOpenings.Count == 0)
                                     {
                                         Logger.WarnFormat(
-                                            "WM005: {0} - #{1} is an projection that has been no 3D geometric form definition",
-                                            addition.GetType().Name, addition.EntityLabel);
+                                            "WM004: {0}[#{1}] is an opening that has been no 3D geometric form definition",
+                                            opening.GetType().Name, opening.EntityLabel);
                                     }
-                                    processed.Add(addition.EntityLabel);
+                                    processed.Add(opening.EntityLabel);
+                                }
+                                else
+                                {
+                                    var addition = feature as IfcFeatureElementAddition;
+                                    if (addition != null)
+                                    {
+                                        var projectionShapes =
+                                            WriteProductShape(contextHelper, addition, false).ToList();
+                                        foreach (var projectionShape in projectionShapes)
+                                        {
+                                            var projGeom = contextHelper.GetGeometryFromCache(projectionShape);
+                                            if (projGeom != null)
+                                                allProjections.Add(projGeom);
+                                        }
+                                        if (allProjections.Count == 0)
+                                        {
+                                            Logger.WarnFormat(
+                                                "WM005: {0}[#{1}] is an projection that has been no 3D geometric form definition",
+                                                addition.GetType().Name, addition.EntityLabel);
+                                        }
+                                        processed.Add(addition.EntityLabel);
+                                    }
                                 }
                             }
+
+                            //make the finished shape
+                            if (allProjections.Any())
+                                elementGeom = elementGeom.Union(allProjections, _model.ModelFactors.Precision);
+
+                            if (allOpenings.Any())
+                                elementGeom = elementGeom.Cut(allOpenings, _model.ModelFactors.Precision);
+                            if (elementGeom.IsSimplified)
+                                Logger.WarnFormat(
+                                    "WM008: {2}[#{0}]-{1} is too complex, it will make interoperability difficult. It has been simplified, no openings have been cut. You should consider re-authoring it in your BIM tool",
+                                    element.EntityLabel, element.Name, element.GetType().Name);
+
                         }
+                        //var correctGeom = Engine.CreateSolidSet();
+                        //foreach (var solidGeom in elementGeom)
+                        //{
+                        //    if (Math.Abs(solidGeom.Volume) > _model.ModelFactors.Precision) //we have a good solid
+                        //        correctGeom.Add(solidGeom);                                           
+                        //}
+                        //if (correctGeom.Count != elementGeom.Count) //some bad gemetries have been removed
+                        //{
+                        //    Logger.WarnFormat("WM010: {2}[#{0}]-{1} has bad geometry.",
+                        //  element.EntityLabel, element.Name, element.GetType().Name);
+                        //    elementGeom = correctGeom;
+                        //}
+                        //if (!correctGeom.Any()) //nothing left so go to original form
+                        //{
 
+                        //    //reset it to the original
+                        //    elementGeom = Engine.CreateSolidSet();
+                        //    foreach (var elemShape in elementShapes)
+                        //    {
+                        //        var geom = contextHelper.GetGeometryFromCache(elemShape);
+                        //        elementGeom.Add(geom);
+                        //    }
+                        //}
 
-                        //make the finished shape
-                        if (allProjections.Any())
-                            elementGeom = elementGeom.Union(allProjections, _model.ModelFactors.PrecisionBoolean);
-
-                        if (allOpenings.Any())
-                            elementGeom = elementGeom.Cut(allOpenings, _model.ModelFactors.PrecisionBoolean);
 
                         ////now add to the DB               
                         XbimModelFactors mf = _model.ModelFactors;
@@ -735,7 +809,7 @@ namespace Xbim.ModelGeometry.Scene
                             {
                                 using (var bw = new BinaryWriter(memStream))
                                 {
-                                    _engine.WriteTriangulation(bw, geom, mf.Precision, mf.DeflectionTolerance,
+                                    Engine.WriteTriangulation(bw, geom, mf.Precision, mf.DeflectionTolerance,
                                         mf.DeflectionAngle);
                                 }
                             }
@@ -743,7 +817,7 @@ namespace Xbim.ModelGeometry.Scene
                             {
                                 using (var tw = new StreamWriter(memStream))
                                 {
-                                    _engine.WriteTriangulation(tw, geom, mf.Precision, mf.DeflectionTolerance,
+                                    Engine.WriteTriangulation(tw, geom, mf.Precision, mf.DeflectionTolerance,
                                         mf.DeflectionAngle);
                                 }
                             }
@@ -765,13 +839,13 @@ namespace Xbim.ModelGeometry.Scene
                         }
                     }
                     else
-                        Logger.ErrorFormat(
-                            "WM006: #{1} - {0} is an element that contains openings and has an invalid 3D geometric form definition",
+                        Logger.WarnFormat(
+                            "WM006: {0}[#{1}] contains openings but has no 3D geometry definition",
                             element.GetType().Name, element.EntityLabel);
                     processed.Add(element.EntityLabel);
                     if (progDelegate != null)
                     {
-                        var newPercentage = Convert.ToInt32((double)localTally / contextHelper.Total * 100.0);
+                        var newPercentage = Convert.ToInt32((double)localTally / featureCount * 100.0);
                         if (newPercentage > localPercentageParsed)
                         {
                             Interlocked.Exchange(ref localPercentageParsed, newPercentage);
@@ -781,11 +855,13 @@ namespace Xbim.ModelGeometry.Scene
                 }
                 catch (Exception e)
                 {
-                    Logger.WarnFormat("WM007: {1} - {0} is an element that contains openings but it has a bad 3D geometric form definition, {2}",
-                                                element.GetType().Name, element.EntityLabel, e.Message);
+                    Logger.WarnFormat(
+                        "WM007: {0}[#{1}] - icontains openings but has its geometry can not be built, {2}",
+                        element.GetType().Name, element.EntityLabel, e.Message);
                 }
+
             }
-                );
+            );
             contextHelper.PercentageParsed = localPercentageParsed;
             contextHelper.Tally = localTally;
             if (progDelegate != null) progDelegate(101, "WriteFeatureElements, (" + localTally + " written)");
@@ -826,6 +902,7 @@ namespace Xbim.ModelGeometry.Scene
         private IEnumerable<XbimShapeInstance> WriteProductShape(XbimCreateContextHelper contextHelper,
             IfcProduct element, bool includesOpenings)
         {
+            _maxXyz = _model.ModelFactors.OneMetre * 100; //elements bigger than 100 metres should not be considered in region
             var shapesInstances = new List<XbimShapeInstance>();
             var rep = element.Representation.Representations
                 .FirstOrDefault(r => _contexts.Contains(r.ContextOfItems)
@@ -861,9 +938,11 @@ namespace Xbim.ModelGeometry.Scene
                                 );
                             var transproductBounds = instance.BoundingBox /*productBounds*/.Transform(placementTransform);
                             //transform the bounds
+
+                            //if (transproductBounds.SizeX < _maxXyz && transproductBounds.SizeY < _maxXyz && transproductBounds.SizeZ < _maxXyz)
                             contextHelper.Clusters[rep.ContextOfItems].Enqueue(
-                                new XbimBBoxClusterElement(instance.GeometryId,
-                                    transproductBounds));
+                            new XbimBBoxClusterElement(instance.GeometryId,
+                                transproductBounds));
                         }
                     }
                 }
@@ -898,7 +977,7 @@ namespace Xbim.ModelGeometry.Scene
             Parallel.ForEach(contextHelper.MappedShapeIds, contextHelper.ParallelOptions, mapId =>
                 //   foreach (var map in allMaps)
             {
-                var entity = _model.Instances[mapId];
+                var entity = _model.InstancesLocal[mapId];
                 var map = entity as IfcMappedItem;
                 var mapShapes = new List<GeometryReference>();
                 if (map != null)
@@ -942,75 +1021,74 @@ namespace Xbim.ModelGeometry.Scene
         {
             var localPercentageParsed = contextHelper.PercentageParsed;
             var localTally = contextHelper.Tally;
-            var dedupCount = 0;
-
-
-            var geomHash =
-                new ConcurrentDictionary<RepresentationItemGeometricHashKey, int>();
-
+           // var dedupCount = 0;
+            var xbimTessellator = new XbimTessellator(Model,geomStorageType);
+            //var geomHash = new ConcurrentDictionary<RepresentationItemGeometricHashKey, int>();
+            
             var mapLookup =
                 new ConcurrentDictionary<int, int>();
             if (progDelegate != null) progDelegate(-1, "WriteShapeGeometries (" + contextHelper.ProductShapeIds.Count + " shapes)");
+            var precision = Model.ModelFactors.Precision;
+            var deflection = Model.ModelFactors.DeflectionTolerance;
+            var deflectionAngle = Model.ModelFactors.DeflectionAngle;
            Parallel.ForEach(contextHelper.ProductShapeIds, contextHelper.ParallelOptions, shapeId =>
-          //foreach (var shapeId in contextHelper.ProductShapeIds)
+         // foreach (var shapeId in contextHelper.ProductShapeIds)
             {
                 Interlocked.Increment(ref localTally);
-                var shape = (IfcGeometricRepresentationItem)Model.Instances[shapeId];
-                var key = new RepresentationItemGeometricHashKey(shape);
-                var mappedEntityLabel = geomHash.GetOrAdd(key, shapeId);
+                var shape = (IfcGeometricRepresentationItem)Model.InstancesLocal[shapeId];
+              //  var key = new RepresentationItemGeometricHashKey(shape);
                 var isFeatureElementShape = contextHelper.FeatureElementShapeIds.Contains(shapeId);
-                if (!isFeatureElementShape && mappedEntityLabel != shapeId) //it already exists
-                {
-                    mapLookup.TryAdd(shapeId, mappedEntityLabel);
-                    Interlocked.Increment(ref dedupCount);
-                }
-                else //we have added a new shape geometry
-                {
+                //this can be used to remove duplicate shapes but has a memory overhead as large nimber so objects need to be cached
+                
+                //var mappedEntityLabel = geomHash.GetOrAdd(key, shapeId);
+                //
+                //if (!isFeatureElementShape && mappedEntityLabel != shapeId) //it already exists
+                //{
+                //    mapLookup.TryAdd(shapeId, mappedEntityLabel);
+                //    //Interlocked.Increment(ref dedupCount);
+                //}
+                //else //we have added a new shape geometry
+              //
 
+               //  if (shape.EntityLabel == 43823)
+                {
+                    // Console.WriteLine(((IfcFacetedBrep) shape).Outer.CfsFaces.Count);
                     try
                     {
-                       
-                        //  IXbimGeometryModel geomModel = shape.Geometry3D();
-                        var geomModel = _engine.Create(shape);
-                        //this should be a solid, a shell, or a set of either
-
-                        if (geomModel != null && geomModel.IsValid)
+                        // Console.WriteLine(shape.GetType().Name);
+                        // using (var geomModel = _engine.Create(shape))
                         {
-#if USE_CARVE
-                            var poly = geomModel.ToPolyhedron(_model.ModelFactors);
-                            if (poly.FaceCount > Model.ModelFactors.SimplifyFaceCountThreshHold)
+                            IXbimShapeGeometryData shapeGeom = null;
+                            IXbimGeometryObject geomModel = null;
+                            if (!isFeatureElementShape && xbimTessellator.CanMesh(shape)) //if we can mesh the shape directly just do it
                             {
-                                try
-                                {
-                                    poly.MergeCoPlanarFaces(0.01);
-                                }
-                                catch (Exception e)
-                                {
-                                    Logger.ErrorFormat("Failed to merge coplanar faces, ", e.Message);
-                                }
+                                shapeGeom = xbimTessellator.Mesh(shape);
                             }
-#endif                       
-                           
-                            
-                            IXbimShapeGeometryData shapeGeom = _engine.CreateShapeGeometry(geomModel,
-                                _model.ModelFactors.Precision,
-                                _model.ModelFactors.DeflectionTolerance,
-                                _model.ModelFactors.DeflectionAngle, geomStorageType);
+                            else //we need to create a geometry object
+                            {
+                                geomModel = Engine.Create(shape);
+                                if (geomModel != null && geomModel.IsValid)
+                                    shapeGeom = Engine.CreateShapeGeometry(geomModel,precision,deflection,deflectionAngle,geomStorageType);
+                            }
 
-                            if (shapeGeom.ShapeData.Length == 0) 
-                                throw new Exception("No shape geometry created");
-                            shapeGeom.IfcShapeLabel = shapeId;
-                            shapeGeom.GeometryHash = key.GetHashCode();
-                            shapeGeometries.Add(shapeGeom);
-                            if (isFeatureElementShape)
-                            //we need for boolean operations later, add the polyhedron if the face is planar
+                            if (shapeGeom == null || shapeGeom.ShapeData==null || shapeGeom.ShapeData.Length == 0)
+                                Logger.InfoFormat("WM001: {1}[#{0}] is an empty shape", shapeId,
+                                    shape.GetType().Name);
+                            else
                             {
-                                contextHelper.CachedGeometries.TryAdd(shapeId, geomModel);
+                                shapeGeom.IfcShapeLabel = shapeId;
+                                shapeGeometries.Add(shapeGeom);
                             }
+                            if (geomModel != null && geomModel.IsValid)
+                            {
+                                if (isFeatureElementShape)
+                                    //we need for boolean operations later, add the polyhedron if the face is planar
+                                    contextHelper.CachedGeometries.TryAdd(shapeId, geomModel);
+                                else
+                                    geomModel.Dispose();
+                            }
+                            
                         }
-                        else
-                            Logger.WarnFormat("WM001: Entity #{0} of type {1} is an empty shape", shapeId,
-                             shape.GetType().Name);
                     }
                     catch (Exception e)
                     {
@@ -1033,6 +1111,7 @@ namespace Xbim.ModelGeometry.Scene
 
             contextHelper.PercentageParsed = localPercentageParsed;
             contextHelper.Tally = localTally;
+            
 
             //Now tidy up the maps
             Parallel.ForEach(mapLookup, contextHelper.ParallelOptions, mapKv =>
@@ -1063,12 +1142,9 @@ namespace Xbim.ModelGeometry.Scene
                 // the XbimDBSCAN method adopted for clustering produces clusters of contiguous elements.
                 // if the maximum size is a problem they could then be split using other algorithms that divide spaces equally
                 //
-                var v = XbimDBSCAN.GetClusters(elementsToCluster, 5 * metre); // .OrderByDescending(x => x.GeometryIds.Count);
+                var v = XbimDbscan.GetClusters(elementsToCluster, 5 * metre); // .OrderByDescending(x => x.GeometryIds.Count);
                 var i = 1;
-                foreach (var item in v)
-                {
-                    regions.Add(new XbimRegion("Region " + i++, item.Bound, item.GeometryIds.Count));
-                }
+                regions.AddRange(v.Select(item => new XbimRegion("Region " + i++, item.Bound, item.GeometryIds.Count)));
 
 
                 var transaction = geomTable.BeginLazyTransaction();
@@ -1159,7 +1235,7 @@ namespace Xbim.ModelGeometry.Scene
             using (var shapeInstanceTable = _model.GetShapeInstanceTable())
             {
 
-                using (var transaction = shapeInstanceTable.BeginReadOnlyTransaction())
+                using (shapeInstanceTable.BeginReadOnlyTransaction())
                 {
                     foreach (var context in _contexts)
                     {
@@ -1234,7 +1310,7 @@ namespace Xbim.ModelGeometry.Scene
             using (var shapeGeometryTable = Model.GetShapeGeometryTable())
             {
 
-                using (var transaction = shapeGeometryTable.BeginReadOnlyTransaction())
+                using (shapeGeometryTable.BeginReadOnlyTransaction())
                 {
                     IXbimShapeGeometryData shapeGeometry = new XbimShapeGeometry();
                     if (shapeGeometryTable.TryMoveFirstShapeGeometry(ref shapeGeometry))
@@ -1257,7 +1333,7 @@ namespace Xbim.ModelGeometry.Scene
             using (var shapeGeometryTable = Model.GetShapeGeometryTable())
             {
 
-                using (var transaction = shapeGeometryTable.BeginReadOnlyTransaction())
+                using (shapeGeometryTable.BeginReadOnlyTransaction())
                 {
                     IXbimShapeGeometryData shapeGeometry = new XbimShapeGeometry();
                     shapeGeometryTable.TryGetShapeGeometry(shapeGeometryLabel, ref shapeGeometry);
@@ -1286,7 +1362,7 @@ namespace Xbim.ModelGeometry.Scene
             using (var shapeInstanceTable = _model.GetShapeInstanceTable())
             {
 
-                using (var transaction = shapeInstanceTable.BeginReadOnlyTransaction())
+                using (shapeInstanceTable.BeginReadOnlyTransaction())
                 {
                     foreach (var context in _contexts)
                     {
@@ -1299,7 +1375,7 @@ namespace Xbim.ModelGeometry.Scene
                             {
                                 if (surfaceStyle > 0) //we have a surface style
                                 {
-                                    var ss = (IfcSurfaceStyle)_model.Instances[surfaceStyle];
+                                    var ss = (IfcSurfaceStyle)_model.InstancesLocal[surfaceStyle];
                                     yield return new XbimTexture().CreateTexture(ss);
                                     surfaceStyle = shapeInstanceTable.SkipSurfaceStyes(surfaceStyle);
                                 }
@@ -1388,7 +1464,7 @@ namespace Xbim.ModelGeometry.Scene
             using (var shapeInstanceTable = _model.GetShapeInstanceTable())
             {
 
-                using (var transaction = shapeInstanceTable.BeginReadOnlyTransaction())
+                using (shapeInstanceTable.BeginReadOnlyTransaction())
                 {
                     foreach (var context in _contexts)
                     {
@@ -1416,7 +1492,7 @@ namespace Xbim.ModelGeometry.Scene
             using (var shapeInstanceTable = _model.GetShapeInstanceTable())
             {
 
-                using (var transaction = shapeInstanceTable.BeginReadOnlyTransaction())
+                using (shapeInstanceTable.BeginReadOnlyTransaction())
                 {
                     foreach (var context in _contexts)
                     {
@@ -1427,7 +1503,7 @@ namespace Xbim.ModelGeometry.Scene
                             {
 
                                 if (context.EntityLabel == shapeInstance.RepresentationContext &&
-                                     shapeInstance.RepresentationType != (byte)XbimGeometryRepresentationType.OpeningsAndAdditionsExcluded &&
+                                    shapeInstance.RepresentationType != (byte)XbimGeometryRepresentationType.OpeningsAndAdditionsExcluded &&
                                     !(ignoreFeatures && typeof(IfcFeatureElement).IsAssignableFrom(IfcMetaData.GetType(shapeInstance.IfcTypeId))))
                                     yield return (XbimShapeInstance)shapeInstance;
                                 shapeInstance = new XbimShapeInstance();
@@ -1451,7 +1527,7 @@ namespace Xbim.ModelGeometry.Scene
             using (var shapeInstanceTable = _model.GetShapeInstanceTable())
             {
 
-                using (var transaction = shapeInstanceTable.BeginReadOnlyTransaction())
+                using (shapeInstanceTable.BeginReadOnlyTransaction())
                 {
                     foreach (var context in _contexts)
                     {
@@ -1481,7 +1557,7 @@ namespace Xbim.ModelGeometry.Scene
             using (var shapeInstanceTable = _model.GetShapeInstanceTable())
             {
 
-                using (var transaction = shapeInstanceTable.BeginReadOnlyTransaction())
+                using (shapeInstanceTable.BeginReadOnlyTransaction())
                 {
                     foreach (var context in _contexts)
                     {
@@ -1500,7 +1576,7 @@ namespace Xbim.ModelGeometry.Scene
                             }
                         }
                         else if (texture.DefinedObjectId < 0)
-                        //if the texture is for a type then get all instances of the type
+                            //if the texture is for a type then get all instances of the type
                         {
                             var typeId = (short)Math.Abs(texture.DefinedObjectId);
                             if (shapeInstanceTable.TrySeekProductType(typeId, ref shapeInstance))
@@ -1531,7 +1607,7 @@ namespace Xbim.ModelGeometry.Scene
             using (var shapeGeometryTable = Model.GetShapeGeometryTable())
             {
 
-                using (var transaction = shapeGeometryTable.BeginReadOnlyTransaction())
+                using (shapeGeometryTable.BeginReadOnlyTransaction())
                 {
                     if (shapeGeometryTable.TryMoveFirstReferenceCounter())
                     {
@@ -1555,24 +1631,9 @@ namespace Xbim.ModelGeometry.Scene
         /// <returns></returns>
         public bool ProductHasGeometry(Int32 productId)
         {
-
             using (var shapeInstanceTable = _model.GetShapeInstanceTable())
-            {
-
-                using (var transaction = shapeInstanceTable.BeginReadOnlyTransaction())
-                {
-                    foreach (var context in _contexts)
-                    {
-                        if (shapeInstanceTable.TrySeekShapeInstanceOfProduct(productId))
-                        {
-                            return true;
-                        }
-                    }
-
-                }
-
-            }
-            return false;
+            using (shapeInstanceTable.BeginReadOnlyTransaction())
+                return _contexts.Any(context => shapeInstanceTable.TrySeekShapeInstanceOfProduct(productId));
         }
 
         /// <summary>
@@ -1644,10 +1705,9 @@ namespace Xbim.ModelGeometry.Scene
 
         public void Write(BinaryWriter binaryStream)
         {
-            
-            float metre = Convert.ToSingle(_model.ModelFactors.OneMetre);
+        // ReSharper disable RedundantCast
             var lookup = ShapeGeometryReferenceData();
-            var styles = this.SurfaceStyles().ToList();
+            var styles = SurfaceStyles().ToList();
             var regions = GetRegions().ToList();
 
             int numberOfGeometries = 0;
@@ -1655,17 +1715,20 @@ namespace Xbim.ModelGeometry.Scene
             int numberOfTriangles = 0;
             int numberOfMatrices = 0;
             int numberOfProducts = 0;
+            int numberOfStyles = styles.Count;
             //start writing out
+
             binaryStream.Write((Int32)94132117); //magic number
+
             binaryStream.Write((byte)1); //version of stream
-            int start = (int)binaryStream.Seek(0, SeekOrigin.Current);
+            var start = (int)binaryStream.Seek(0, SeekOrigin.Current);
             binaryStream.Write((Int32)0); //number of shapes
             binaryStream.Write((Int32)0); //number of vertices
             binaryStream.Write((Int32)0); //number of triangles
             binaryStream.Write((Int32)0); //number of matrices
             binaryStream.Write((Int32)0); //number of products
-            binaryStream.Write((Int32)styles.Count); //number of styles
-            binaryStream.Write(metre); //write out conversion to meter factor
+            binaryStream.Write((Int32)numberOfStyles); //number of styles
+            binaryStream.Write(Convert.ToSingle(_model.ModelFactors.OneMetre)); //write out conversion to meter factor
     
             binaryStream.Write(Convert.ToInt16(regions.Count)); //write out the population data
             foreach (var r in regions)
@@ -1687,15 +1750,15 @@ namespace Xbim.ModelGeometry.Scene
                 {
                     binaryStream.Write((Int32)texture.DefinedObjectId); //style ID
                     XbimColour colour = texture.ColourMap[0];
-                    binaryStream.Write(colour.Red);
-                    binaryStream.Write(colour.Green);
-                    binaryStream.Write(colour.Blue);
-                    binaryStream.Write(colour.Alpha);
+                    binaryStream.Write((Single)colour.Red);
+                    binaryStream.Write((Single)colour.Green);
+                    binaryStream.Write((Single)colour.Blue);
+                    binaryStream.Write((Single)colour.Alpha);
                 }
             }
 
             //write out all the product bounding boxes
-            foreach (var product in _model.Instances.OfType<IfcProduct>())
+            foreach (var product in _model.InstancesLocal.OfType<IfcProduct>())
             {
                 if (!(product is IfcFeatureElement))
                 {
@@ -1710,7 +1773,7 @@ namespace Xbim.ModelGeometry.Scene
                     if (!bb.IsEmpty) //do not write out anything with no geometry
                     {
                         binaryStream.Write((Int32) product.EntityLabel);
-                        binaryStream.Write((short)IfcMetaData.IfcTypeId(product));
+                        binaryStream.Write((UInt16)IfcMetaData.IfcTypeId(product));
                         binaryStream.Write(bb.ToFloatArray());
                         numberOfProducts++;
                     }
@@ -1732,8 +1795,8 @@ namespace Xbim.ModelGeometry.Scene
                     {
                         binaryStream.Write(xbimShapeInstance.IfcProductLabel);
                         binaryStream.Write((UInt16)xbimShapeInstance.IfcTypeId);
-                        binaryStream.Write(xbimShapeInstance.InstanceLabel);
-                        binaryStream.Write(xbimShapeInstance.StyleLabel > 0
+                        binaryStream.Write((UInt32)xbimShapeInstance.InstanceLabel);
+                        binaryStream.Write((Int32)xbimShapeInstance.StyleLabel > 0
                             ? xbimShapeInstance.StyleLabel
                             : xbimShapeInstance.IfcTypeId*-1);
                         binaryStream.Write(xbimShapeInstance.Transformation);
@@ -1741,8 +1804,14 @@ namespace Xbim.ModelGeometry.Scene
                         numberOfMatrices++;
                     }
                     numberOfVertices += XbimShapeTriangulation.VerticesCount(geometry.ShapeData);
-                    binaryStream.Write(geometry.ShapeData);
+                   // binaryStream.Write(geometry.ShapeData);
+                    var ms = new MemoryStream(geometry.ShapeData);
+                    var br = new BinaryReader(ms);
+                    var tr = br.ReadShapeTriangulation();
+                   
+                    tr.Write(binaryStream);
                 }
+               
             }
             //now do the single instances
             foreach (var kv in lookup.Where(v => v.Value == 1))
@@ -1758,10 +1827,10 @@ namespace Xbim.ModelGeometry.Scene
 
                     if (xbimShapeInstance != null)
                     {
-                        binaryStream.Write(xbimShapeInstance.IfcProductLabel);
+                        binaryStream.Write((Int32)xbimShapeInstance.IfcProductLabel);
                         binaryStream.Write((UInt16)xbimShapeInstance.IfcTypeId);
-                        binaryStream.Write(xbimShapeInstance.InstanceLabel);
-                        binaryStream.Write(xbimShapeInstance.StyleLabel > 0
+                        binaryStream.Write((Int32)xbimShapeInstance.InstanceLabel);
+                        binaryStream.Write((Int32)xbimShapeInstance.StyleLabel > 0
                             ? xbimShapeInstance.StyleLabel
                             : xbimShapeInstance.IfcTypeId*-1);
                     }
@@ -1787,7 +1856,9 @@ namespace Xbim.ModelGeometry.Scene
             binaryStream.Write((Int32)numberOfMatrices);
             binaryStream.Write((Int32)numberOfProducts);
             binaryStream.Seek(0, SeekOrigin.End); //go back to end
+        // ReSharper restore RedundantCast
         }
-        
     }
-}
+   }
+
+    

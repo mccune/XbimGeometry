@@ -151,7 +151,7 @@ void ShapeProcess_ShapeContext::SetResult (const TopoDS_Shape &res)
 //=======================================================================
 
 /*
-#ifdef DEB
+#ifdef OCCT_DEBUG
 static void DumpMap (const TopTools_DataMapOfShapeShape &map)
 {
   cout << "----" << endl;
@@ -168,7 +168,9 @@ static void DumpMap (const TopTools_DataMapOfShapeShape &map)
 
 static void RecModif (const TopoDS_Shape &S, 
 		      const TopTools_DataMapOfShapeShape &repl,
+		      const Handle(ShapeExtend_MsgRegistrator) &msg,
 		      TopTools_DataMapOfShapeShape &map,
+		      Handle(ShapeExtend_MsgRegistrator) &myMsg,
 		      const TopAbs_ShapeEnum until)
 {
   TopoDS_Shape r = S;
@@ -208,25 +210,48 @@ static void RecModif (const TopoDS_Shape &S,
 	}
 	else B.Add ( result, sh );
       }
-      if ( modif ) res = result;
+      if ( modif )
+      {
+        if (result.ShapeType() == TopAbs_WIRE || result.ShapeType() == TopAbs_SHELL)
+          result.Closed (BRep_Tool::IsClosed (result));
+        res = result;
+      }
     }
     
     if ( res != r ) map.Bind ( S.Located(aNullLoc), res );
   }
   
+  // update messages (messages must be taken from each level in the substitution map)
+  if ( ! r.IsNull() && ! myMsg.IsNull() && 
+       ! msg.IsNull() && msg->MapShape().Extent() >0 )
+  {
+    const ShapeExtend_DataMapOfShapeListOfMsg& msgmap = msg->MapShape();
+    if ( msgmap.IsBound( r )) {
+      const Message_ListOfMsg &msglist = msgmap.Find (r);
+      for (Message_ListIteratorOfListOfMsg iter (msglist); iter.More(); iter.Next())
+        myMsg->Send ( S, iter.Value(), Message_Warning );
+    }
+    else if ( msgmap.IsBound( S )) {
+      const Message_ListOfMsg &msglist = msgmap.Find (S);
+      for (Message_ListIteratorOfListOfMsg iter (msglist); iter.More(); iter.Next())
+        myMsg->Send ( S, iter.Value(), Message_Warning );
+    }
+  }
+
   if ( until == TopAbs_SHAPE || S.ShapeType() >= until ) return;
 
   for ( TopoDS_Iterator it(S); it.More(); it.Next() ) {
-    RecModif ( it.Value(), repl, map, until );
+    RecModif ( it.Value(), repl, msg, map, myMsg, until );
   }
 }
 
-void ShapeProcess_ShapeContext::RecordModification (const TopTools_DataMapOfShapeShape &repl)
+void ShapeProcess_ShapeContext::RecordModification (const TopTools_DataMapOfShapeShape &repl,
+                                                    const Handle(ShapeExtend_MsgRegistrator)& msg)
 {
   if ( repl.Extent() <=0 ) return;
-  RecModif ( myShape, repl, myMap, myUntil );
+  RecModif ( myShape, repl, msg, myMap, myMsg, myUntil );
   if ( myMap.IsBound(myShape) ) myResult = myMap.Find ( myShape );
-#ifdef DEB
+#ifdef OCCT_DEBUG
 //  cout << "Modifier: " << endl; DumpMap (myMap);
 #endif
 }
@@ -270,6 +295,8 @@ static void RecModif (const TopoDS_Shape &S,
        ! msg.IsNull() && msg->MapShape().Extent() >0 ) {
     TopoDS_Shape cur, next = r;
     const ShapeExtend_DataMapOfShapeListOfMsg& msgmap = msg->MapShape();
+    if ( msgmap.IsBound( S ))
+      next = S;
     do {
       cur = next;
       if (msgmap.IsBound (cur)) {
@@ -284,7 +311,7 @@ static void RecModif (const TopoDS_Shape &S,
 
   if ( until == TopAbs_SHAPE || S.ShapeType() >= until ) return;
   
-  for ( TopoDS_Iterator it(S,Standard_False,Standard_False); it.More(); it.Next() ) {
+  for ( TopoDS_Iterator it(S,Standard_False/*,Standard_False*/); it.More(); it.Next() ) {
     RecModif ( it.Value(), repl, msg, map, myMsg, until );
   }
 }
@@ -299,7 +326,7 @@ void ShapeProcess_ShapeContext::RecordModification (const Handle(ShapeBuild_ReSh
     myResult = myMap.Find ( myShape );
     myResult.Location(myShape.Location());
   }
-#ifdef DEB
+#ifdef OCCT_DEBUG
 //  cout << "ReShape: " << endl; DumpMap (myMap);
 #endif
 }
@@ -350,11 +377,12 @@ static void ExplodeModifier (const TopoDS_Shape &S,
 }
 
 void ShapeProcess_ShapeContext::RecordModification (const TopoDS_Shape &S, 
-                                                    const BRepTools_Modifier &repl)
+                                                    const BRepTools_Modifier &repl,
+                                                    const Handle(ShapeExtend_MsgRegistrator)& msg)
 {
   TopTools_DataMapOfShapeShape map;
   ExplodeModifier ( S, repl, map, myUntil );
-  RecordModification ( map );
+  RecordModification ( map, msg );
 }
 
 //=======================================================================

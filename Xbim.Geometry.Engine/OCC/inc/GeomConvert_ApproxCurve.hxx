@@ -6,75 +6,73 @@
 #ifndef _GeomConvert_ApproxCurve_HeaderFile
 #define _GeomConvert_ApproxCurve_HeaderFile
 
-#ifndef _Standard_HeaderFile
 #include <Standard.hxx>
-#endif
-#ifndef _Standard_DefineAlloc_HeaderFile
 #include <Standard_DefineAlloc.hxx>
-#endif
-#ifndef _Standard_Macro_HeaderFile
 #include <Standard_Macro.hxx>
-#endif
 
-#ifndef _Handle_Geom_Curve_HeaderFile
-#include <Handle_Geom_Curve.hxx>
-#endif
-#ifndef _Standard_Boolean_HeaderFile
 #include <Standard_Boolean.hxx>
-#endif
-#ifndef _Handle_Geom_BSplineCurve_HeaderFile
 #include <Handle_Geom_BSplineCurve.hxx>
-#endif
-#ifndef _Standard_Real_HeaderFile
 #include <Standard_Real.hxx>
-#endif
-#ifndef _GeomAbs_Shape_HeaderFile
+#include <Handle_Geom_Curve.hxx>
 #include <GeomAbs_Shape.hxx>
-#endif
-#ifndef _Standard_Integer_HeaderFile
 #include <Standard_Integer.hxx>
-#endif
-#ifndef _Standard_OStream_HeaderFile
+#include <Handle_Adaptor3d_HCurve.hxx>
 #include <Standard_OStream.hxx>
-#endif
-class Geom_Curve;
 class Geom_BSplineCurve;
 class Standard_OutOfRange;
 class Standard_ConstructionError;
+class Geom_Curve;
+class Adaptor3d_HCurve;
 
 
-//! A framework to convert a 3D curve to a 3D BSpline. <br>
-//! This is done by approximation to a BSpline curve within a given tolerance. <br>
-class GeomConvert_ApproxCurve  {
+//! A framework to convert a 3D curve to a 3D BSpline.
+//! This is done by approximation to a BSpline curve within a given tolerance.
+class GeomConvert_ApproxCurve 
+{
 public:
 
   DEFINE_STANDARD_ALLOC
 
-  //! Constructs a curve approximation framework defined by - <br>
-//!   -      the conic Curve, <br>
-//!   -      the tolerance value Tol3d, <br>
-//!   -      the degree of continuity Order, <br>
-//!   -      the maximum number of segments <br>
-//!     MaxSegments allowed in the resulting BSpline curve, and <br>
-//!   -      the highest degree MaxDeg which the <br>
-//!     polynomial defining the BSpline curve may have. <br>
-  Standard_EXPORT   GeomConvert_ApproxCurve(const Handle(Geom_Curve)& Curve,const Standard_Real Tol3d,const GeomAbs_Shape Order,const Standard_Integer MaxSegments,const Standard_Integer MaxDegree);
-  //! Returns the BSpline curve resulting from the approximation algorithm. <br>
-  Standard_EXPORT     Handle_Geom_BSplineCurve Curve() const;
-  //!  returns  Standard_True  if  the  approximation  has <br>
-//! been  done  within  requiered tolerance <br>
-  Standard_EXPORT     Standard_Boolean IsDone() const;
-  //! Returns  Standard_True if the approximation did come out <br>
-//! with a result that  is not NECESSARELY within the required tolerance <br>
-  Standard_EXPORT     Standard_Boolean HasResult() const;
-  //!  Returns the greatest distance between a point on the <br>
-//! source conic and the BSpline curve resulting from the <br>
-//! approximation. (>0 when an approximation <br>
-//!  has  been  done, 0  if  no  approximation) <br>
-  Standard_EXPORT     Standard_Real MaxError() const;
-  //!  Print on the stream  o  information about the object <br>
-  Standard_EXPORT     void Dump(Standard_OStream& o) const;
-
+  
+  //! Constructs a curve approximation framework defined by -
+  //! -      the conic Curve,
+  //! -      the tolerance value Tol3d,
+  //! -      the degree of continuity Order,
+  //! -      the maximum number of segments
+  //! MaxSegments allowed in the resulting BSpline curve, and
+  //! -      the highest degree MaxDeg which the
+  //! polynomial defining the BSpline curve may have.
+  Standard_EXPORT GeomConvert_ApproxCurve(const Handle(Geom_Curve)& Curve, const Standard_Real Tol3d, const GeomAbs_Shape Order, const Standard_Integer MaxSegments, const Standard_Integer MaxDegree);
+  
+  //! Constructs a curve approximation framework defined by -
+  //! -      the Curve,
+  //! -      the tolerance value Tol3d,
+  //! -      the degree of continuity Order,
+  //! -      the maximum number of segments
+  //! MaxSegments allowed in the resulting BSpline curve, and
+  //! -      the highest degree MaxDeg which the
+  //! polynomial defining the BSpline curve may have.
+  Standard_EXPORT GeomConvert_ApproxCurve(const Handle(Adaptor3d_HCurve)& Curve, const Standard_Real Tol3d, const GeomAbs_Shape Order, const Standard_Integer MaxSegments, const Standard_Integer MaxDegree);
+  
+  //! Returns the BSpline curve resulting from the approximation algorithm.
+  Standard_EXPORT   Handle(Geom_BSplineCurve) Curve()  const;
+  
+  //! returns  Standard_True  if  the  approximation  has
+  //! been  done  within  requiered tolerance
+  Standard_EXPORT   Standard_Boolean IsDone()  const;
+  
+  //! Returns  Standard_True if the approximation did come out
+  //! with a result that  is not NECESSARELY within the required tolerance
+  Standard_EXPORT   Standard_Boolean HasResult()  const;
+  
+  //! Returns the greatest distance between a point on the
+  //! source conic and the BSpline curve resulting from the
+  //! approximation. (>0 when an approximation
+  //! has  been  done, 0  if  no  approximation)
+  Standard_EXPORT   Standard_Real MaxError()  const;
+  
+  //! Print on the stream  o  information about the object
+  Standard_EXPORT   void Dump (Standard_OStream& o)  const;
 
 
 
@@ -87,13 +85,15 @@ protected:
 
 private:
 
+  
+  //! Converts a curve to B-spline
+  Standard_EXPORT   void Approximate (const Handle(Adaptor3d_HCurve)& theCurve, const Standard_Real theTol3d, const GeomAbs_Shape theOrder, const Standard_Integer theMaxSegments, const Standard_Integer theMaxDegree) ;
 
 
-Handle_Geom_Curve myCurve;
-Standard_Boolean myIsDone;
-Standard_Boolean myHasResult;
-Handle_Geom_BSplineCurve myBSplCurve;
-Standard_Real myMaxError;
+  Standard_Boolean myIsDone;
+  Standard_Boolean myHasResult;
+  Handle(Geom_BSplineCurve) myBSplCurve;
+  Standard_Real myMaxError;
 
 
 };
@@ -102,7 +102,6 @@ Standard_Real myMaxError;
 
 
 
-// other Inline functions and methods (like "C++: function call" methods)
 
 
-#endif
+#endif // _GeomConvert_ApproxCurve_HeaderFile

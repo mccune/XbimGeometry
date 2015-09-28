@@ -5,9 +5,7 @@
 
 #include <ShapeCustom_DirectModification.jxx>
 
-#ifndef _Standard_Type_HeaderFile
 #include <Standard_Type.hxx>
-#endif
 
 
  
@@ -15,6 +13,7 @@
 
 IMPLEMENT_STANDARD_TYPE(ShapeCustom_DirectModification)
 IMPLEMENT_STANDARD_SUPERTYPE_ARRAY()
+  STANDARD_TYPE(ShapeCustom_Modification),
   STANDARD_TYPE(BRepTools_Modification),
   STANDARD_TYPE(MMgt_TShared),
   STANDARD_TYPE(Standard_Transient),

@@ -64,7 +64,8 @@
 #include <BOPCol_IndexedMapOfShape.hxx>
 #include <BOPCol_MapOfShape.hxx>
 //
-#include <BOPInt_ShrunkRange.hxx>
+#include <IntTools_ShrunkRange.hxx>
+#include <Precision.hxx>
 //
 
 static
@@ -76,7 +77,7 @@ static
   Standard_Boolean FindFacePairs (const TopoDS_Edge& theE,
                                   const BOPCol_ListOfShape& thLF,
                                   BOPTools_ListOfCoupleOfShape& theLCFF,
-                                  Handle(BOPInt_Context)& theContext);
+                                  Handle(IntTools_Context)& theContext);
 static
   TopAbs_Orientation Orientation(const TopoDS_Edge& anE,
                                  const TopoDS_Face& aF);
@@ -89,16 +90,23 @@ static
                   const gp_Dir& aDTgt,
                   gp_Dir& aDN,
                   gp_Dir& aDB,
-                  Handle(BOPInt_Context)& theContext,
-                  GeomAPI_ProjectPointOnSurf& aProjPL);
+                  Handle(IntTools_Context)& theContext,
+                  GeomAPI_ProjectPointOnSurf& aProjPL,
+                  const Standard_Real aDt);
 static
-  Standard_Boolean FindPointInFace(const TopoDS_Edge& aE,
-                                   const TopoDS_Face& aF,
+  Standard_Boolean FindPointInFace(const TopoDS_Face& aF,
                                    const gp_Pnt& aP,
                                    gp_Dir& aDB,
                                    gp_Pnt& aPOut,
-                                   Handle(BOPInt_Context)& theContext,
-                                   GeomAPI_ProjectPointOnSurf& aProjPL);
+                                   Handle(IntTools_Context)& theContext,
+                                   GeomAPI_ProjectPointOnSurf& aProjPL,
+                                   const Standard_Real aDt,
+                                   const Standard_Real aTolE);
+static 
+  Standard_Real MinStep3D(const TopoDS_Edge& theE1,
+                          const TopoDS_Face& theF1,
+                          const BOPTools_ListOfCoupleOfShape& theLCS,
+                          const gp_Pnt& aP);
 
 //=======================================================================
 // function: MakeConnexityBlocks
@@ -426,7 +434,7 @@ TopAbs_State BOPTools_AlgoTools::ComputeStateByOnePoint
   (const TopoDS_Shape& theS,
    const TopoDS_Solid& theRef,
    const Standard_Real theTol,
-   Handle(BOPInt_Context)& theContext)
+   Handle(IntTools_Context)& theContext)
 {
   TopAbs_State aState;
   TopAbs_ShapeEnum aType;
@@ -453,7 +461,7 @@ TopAbs_State BOPTools_AlgoTools::ComputeState
    const TopoDS_Solid& theRef,
    const Standard_Real theTol,
    BOPCol_IndexedMapOfShape& theBounds,
-   Handle(BOPInt_Context)& theContext)
+   Handle(IntTools_Context)& theContext)
 {
   TopAbs_State aState;
   TopExp_Explorer aExp; 
@@ -498,7 +506,7 @@ TopAbs_State BOPTools_AlgoTools::ComputeState
   (const TopoDS_Vertex& theV,
    const TopoDS_Solid& theRef,
    const Standard_Real theTol,
-   Handle(BOPInt_Context)& theContext)
+   Handle(IntTools_Context)& theContext)
 {
   TopAbs_State aState;
   gp_Pnt aP3D; 
@@ -516,7 +524,7 @@ TopAbs_State BOPTools_AlgoTools::ComputeState
   (const TopoDS_Edge& theE,
    const TopoDS_Solid& theRef,
    const Standard_Real theTol,
-   Handle(BOPInt_Context)& theContext)
+   Handle(IntTools_Context)& theContext)
 {
   Standard_Real aT1, aT2, aT = 0.;
   TopAbs_State aState;
@@ -568,7 +576,7 @@ TopAbs_State BOPTools_AlgoTools::ComputeState
   (const gp_Pnt& theP,
    const TopoDS_Solid& theRef,
    const Standard_Real theTol,
-   Handle(BOPInt_Context)& theContext)
+   Handle(IntTools_Context)& theContext)
 {
   TopAbs_State aState;
   //
@@ -588,7 +596,7 @@ Standard_Integer BOPTools_AlgoTools::IsInternalFace
    const TopoDS_Solid& theSolid,
    BOPCol_IndexedDataMapOfShapeListOfShape& theMEF,
    const Standard_Real theTol,
-   Handle(BOPInt_Context)& theContext)
+   Handle(IntTools_Context)& theContext)
 {
   Standard_Boolean bDegenerated;
   Standard_Integer aNbF, iRet, iFound;
@@ -703,7 +711,7 @@ Standard_Integer BOPTools_AlgoTools::IsInternalFace
   (const TopoDS_Face& theFace,
    const TopoDS_Edge& theEdge,
    BOPCol_ListOfShape& theLF,
-   Handle(BOPInt_Context)& theContext)
+   Handle(IntTools_Context)& theContext)
 {
   Standard_Integer aNbF, iRet;
   //
@@ -748,7 +756,7 @@ Standard_Integer BOPTools_AlgoTools::IsInternalFace
    const TopoDS_Edge& theEdge,
    const TopoDS_Face& theFace1,
    const TopoDS_Face& theFace2,
-   Handle(BOPInt_Context)& theContext)
+   Handle(IntTools_Context)& theContext)
 {
   Standard_Boolean bRet;
   Standard_Integer iRet;
@@ -802,11 +810,11 @@ Standard_Boolean BOPTools_AlgoTools::GetFaceOff
    const TopoDS_Face& theF1,
    BOPTools_ListOfCoupleOfShape& theLCSOff,
    TopoDS_Face& theFOff,
-   Handle(BOPInt_Context)& theContext)
+   Handle(IntTools_Context)& theContext)
 {
   Standard_Boolean bRet;
-  Standard_Real aT, aT1, aT2, aAngle, aTwoPI, aAngleMin;
-  Standard_Real aUmin, aUsup, aVmin, aVsup;
+  Standard_Real aT, aT1, aT2, aAngle, aTwoPI, aAngleMin, aDt3D;
+  Standard_Real aUmin, aUsup, aVmin, aVsup, aPA;
   gp_Pnt aPn1, aPn2, aPx;
   gp_Dir aDN1, aDN2, aDBF, aDBF2, aDTF;
   gp_Vec aVTgt;
@@ -816,6 +824,7 @@ Standard_Boolean BOPTools_AlgoTools::GetFaceOff
   BOPTools_ListIteratorOfListOfCoupleOfShape aIt;
   GeomAPI_ProjectPointOnSurf aProjPL;
   //
+  aPA=Precision::Angular();
   aAngleMin=100.;
   aTwoPI=M_PI+M_PI;
   aC3D =BRep_Tool::Curve(theE1, aT1, aT2);
@@ -830,8 +839,9 @@ Standard_Boolean BOPTools_AlgoTools::GetFaceOff
   aPL->Bounds(aUmin, aUsup, aVmin, aVsup);
   aProjPL.Init(aPL, aUmin, aUsup, aVmin, aVsup);
   //
+  aDt3D = MinStep3D(theE1, theF1, theLCSOff, aPx);
   GetFaceDir(theE1, theF1, aPx, aT, aDTgt, aDN1, aDBF, theContext, 
-             aProjPL);
+             aProjPL, aDt3D);
   //
   aDTF=aDN1^aDBF;
   //
@@ -844,7 +854,7 @@ Standard_Boolean BOPTools_AlgoTools::GetFaceOff
     //
     aDTgt2 = (aE2.Orientation()==aOr) ? aDTgt : aDTgt.Reversed();
     GetFaceDir(aE2, aF2, aPx, aT, aDTgt2, aDN2, aDBF2, theContext, 
-               aProjPL);
+               aProjPL, aDt3D);
     //Angle
     aAngle=AngleWithRef(aDBF, aDBF2, aDTF);
     //
@@ -852,13 +862,18 @@ Standard_Boolean BOPTools_AlgoTools::GetFaceOff
       aAngle=aTwoPI+aAngle;
     }
     //
-    if (aAngle<Precision::Angular()) {
+    if (aAngle<aPA) {
       if (aF2==theF1) {
         aAngle=M_PI;
       }
       else if (aF2.IsSame(theF1)) {
         aAngle=aTwoPI;
       }
+    }
+    //
+    if (fabs(aAngle-aAngleMin)<aPA) {
+      // the minimal angle can not be found
+      bRet=Standard_False; 
     }
     //
     if (aAngle<aAngleMin){
@@ -910,7 +925,7 @@ Standard_Boolean BOPTools_AlgoTools::GetEdgeOff(const TopoDS_Edge& theE1,
 Standard_Boolean BOPTools_AlgoTools::AreFacesSameDomain
   (const TopoDS_Face& theF1,
    const TopoDS_Face& theF2,
-   Handle(BOPInt_Context)& theContext)
+   Handle(IntTools_Context)& theContext)
 {
   Standard_Boolean bFlag;
   Standard_Integer iErr;
@@ -958,7 +973,7 @@ Standard_Boolean BOPTools_AlgoTools::AreFacesSameDomain
 Standard_Boolean BOPTools_AlgoTools::CheckSameGeom
   (const TopoDS_Face& theF1,
    const TopoDS_Face& theF2,
-   Handle(BOPInt_Context)& theContext)
+   Handle(IntTools_Context)& theContext)
 {
   Standard_Boolean bRet;
   Standard_Real aTolF1, aTolF2, aTol;
@@ -1034,7 +1049,7 @@ Standard_Integer BOPTools_AlgoTools::Sense (const TopoDS_Face& theF1,
 Standard_Boolean BOPTools_AlgoTools::IsSplitToReverse
   (const TopoDS_Shape& theSp,
    const TopoDS_Shape& theSr,
-   Handle(BOPInt_Context)& theContext)
+   Handle(IntTools_Context)& theContext)
 {
   Standard_Boolean bRet;
   TopAbs_ShapeEnum aType;
@@ -1069,7 +1084,7 @@ Standard_Boolean BOPTools_AlgoTools::IsSplitToReverse
 Standard_Boolean BOPTools_AlgoTools::IsSplitToReverse
   (const TopoDS_Face& theFSp,
    const TopoDS_Face& theFSr,
-   Handle(BOPInt_Context)& theContext)
+   Handle(IntTools_Context)& theContext)
 {
   Standard_Boolean bRet, bFound, bInFace;
   Standard_Real aT1, aT2, aT, aU, aV, aScPr;
@@ -1119,6 +1134,10 @@ Standard_Boolean BOPTools_AlgoTools::IsSplitToReverse
     if (!bFlag) {
       return bRet;
     }
+    //
+    if (theFSp.Orientation()==TopAbs_REVERSED){
+      aDNFSp.Reverse();
+    }
   }
   else {
     BRep_Tool::Range(aESp, aT1, aT2);
@@ -1137,7 +1156,7 @@ Standard_Boolean BOPTools_AlgoTools::IsSplitToReverse
   //
   aProjector.LowerDistanceParameters(aU, aV);
   gp_Pnt2d aP2D(aU, aV);
-  bInFace=theContext->IsPointInFace (theFSr, aP2D);
+  bInFace=theContext->IsPointInOnFace (theFSr, aP2D);
   if (!bInFace) {
     return bRet;
   }
@@ -1162,7 +1181,7 @@ Standard_Boolean BOPTools_AlgoTools::IsSplitToReverse
 Standard_Boolean BOPTools_AlgoTools::IsSplitToReverse
   (const TopoDS_Edge& aEF1,
    const TopoDS_Edge& aEF2,
-   Handle(BOPInt_Context)& theContext)
+   Handle(IntTools_Context)& theContext)
 {
   Standard_Boolean bRet, bIsDegenerated;
   //
@@ -1478,13 +1497,67 @@ void BOPTools_AlgoTools::MakeVertex(BOPCol_ListOfShape& aLV,
                                     TopoDS_Vertex& aVnew)
 {
   Standard_Integer aNb;
-  Standard_Real aTi, aDi, aDmax;
-  gp_Pnt aPi, aP;
-  gp_XYZ aXYZ(0.,0.,0.), aXYZi;
-  BOPCol_ListIteratorOfListOfShape aIt;
   //
   aNb=aLV.Extent();
-  if (aNb) {
+  if (!aNb) {
+    return;
+  }
+  //
+  else if (aNb==1) {
+    aVnew=*((TopoDS_Vertex*)(&aLV.First()));
+    return;
+  }
+  //
+  else if (aNb==2) {
+    Standard_Integer m, n;
+    Standard_Real aR[2], dR, aD, aEps;
+    TopoDS_Vertex aV[2];
+    gp_Pnt aP[2];
+    BRep_Builder aBB;
+    //
+    aEps=RealEpsilon();
+    for (m=0; m<aNb; ++m) {
+      aV[m]=(!m)? 
+	*((TopoDS_Vertex*)(&aLV.First())):
+	*((TopoDS_Vertex*)(&aLV.Last()));
+      aP[m]=BRep_Tool::Pnt(aV[m]);
+      aR[m]=BRep_Tool::Tolerance(aV[m]);
+    }  
+    //
+    m=0; // max R
+    n=1; // min R
+    if (aR[0]<aR[1]) {
+      m=1;
+      n=0;
+    }
+    //
+    dR=aR[m]-aR[n]; // dR >= 0.
+    gp_Vec aVD(aP[m], aP[n]);
+    aD=aVD.Magnitude();
+    //
+    if (aD<=dR || aD<aEps) { 
+      aBB.MakeVertex (aVnew, aP[m], aR[m]);
+    }
+    else {
+      Standard_Real aRr;
+      gp_XYZ aXYZr;
+      gp_Pnt aPr;
+      //
+      aRr=0.5*(aR[m]+aR[n]+aD);
+      aXYZr=0.5*(aP[m].XYZ()+aP[n].XYZ()-aVD.XYZ()*(dR/aD));
+      aPr.SetXYZ(aXYZr);
+      //
+      aBB.MakeVertex (aVnew, aPr, aRr);
+    }
+    return;
+  }// else if (aNb==2) {
+  //
+  else { // if (aNb>2) 
+    Standard_Real aTi, aDi, aDmax;
+    gp_Pnt aPi, aP;
+    gp_XYZ aXYZ(0.,0.,0.), aXYZi;
+    BOPCol_ListIteratorOfListOfShape aIt;
+    //
     aIt.Initialize(aLV);
     for (; aIt.More(); aIt.Next()) {
       TopoDS_Vertex& aVi=*((TopoDS_Vertex*)(&aIt.Value()));
@@ -1550,7 +1623,7 @@ Standard_Boolean BOPTools_AlgoTools::GetEdgeOnFace
 Standard_Boolean FindFacePairs (const TopoDS_Edge& theE,
                                 const BOPCol_ListOfShape& thLF,
                                 BOPTools_ListOfCoupleOfShape& theLCFF,
-                                Handle(BOPInt_Context)& theContext)
+                                Handle(IntTools_Context)& theContext)
 {
   Standard_Boolean bFound;
   Standard_Integer i, aNbCEF;
@@ -1676,7 +1749,7 @@ Standard_Boolean BOPTools_AlgoTools::IsBlockInOnFace
   (const IntTools_Range& aShrR,
    const TopoDS_Face& aF,
    const TopoDS_Edge& aE1,
-   Handle(BOPInt_Context)& aContext)
+   Handle(IntTools_Context)& aContext)
 {
   Standard_Boolean bFlag;
   Standard_Real f1, l1, ULD, VLD;
@@ -1765,7 +1838,7 @@ Standard_Boolean BOPTools_AlgoTools::IsBlockInOnFace
 //=======================================================================
 Standard_Boolean BOPTools_AlgoTools::IsMicroEdge
   (const TopoDS_Edge& aE,
-   const Handle(BOPInt_Context)& aCtx) 
+   const Handle(IntTools_Context)& aCtx) 
 {
   Standard_Boolean bRet;
   Standard_Integer iErr;
@@ -1789,7 +1862,7 @@ Standard_Boolean BOPTools_AlgoTools::IsMicroEdge
     aT2=aTmp;
   }
   //
-  BOPInt_ShrunkRange aSR;
+  IntTools_ShrunkRange aSR;
   aSR.SetContext(aCtx);
   aSR.SetData(aE, aT1, aT2, aV1, aV2);
   aSR.Perform();
@@ -1810,17 +1883,22 @@ void GetFaceDir(const TopoDS_Edge& aE,
                 const gp_Dir& aDTgt,
                 gp_Dir& aDN,
                 gp_Dir& aDB,
-                Handle(BOPInt_Context)& theContext,
-                GeomAPI_ProjectPointOnSurf& aProjPL)
+                Handle(IntTools_Context)& theContext,
+                GeomAPI_ProjectPointOnSurf& aProjPL,
+                const Standard_Real aDt)
 {
+  Standard_Real aTolE;
+  gp_Pnt aPx;
+  //
   BOPTools_AlgoTools3D::GetNormalToFaceOnEdge(aE, aF, aT, aDN);
   if (aF.Orientation()==TopAbs_REVERSED){
     aDN.Reverse();
   }
+  //
+  aTolE=BRep_Tool::Tolerance(aE); 
   aDB = aDN^aDTgt;
   //
-  gp_Pnt aPx;
-  if (!FindPointInFace(aE, aF, aP, aDB, aPx, theContext, aProjPL)) {
+  if (!FindPointInFace(aF, aP, aDB, aPx, theContext, aProjPL, aDt, aTolE)) {
     BOPTools_AlgoTools3D::GetApproxNormalToFaceOnEdge(aE, aF, aT, aPx, 
                                                       aDN, theContext);
     aProjPL.Perform(aPx);
@@ -1829,74 +1907,55 @@ void GetFaceDir(const TopoDS_Edge& aE,
     aDB.SetXYZ(aVec.XYZ());
   }
 }
-
 //=======================================================================
 //function : FindPointInFace
 //purpose  : Find a point in the face in direction of <aDB>
 //=======================================================================
-Standard_Boolean FindPointInFace(const TopoDS_Edge& aE,
-                                 const TopoDS_Face& aF,
+Standard_Boolean FindPointInFace(const TopoDS_Face& aF,
                                  const gp_Pnt& aP,
                                  gp_Dir& aDB,
                                  gp_Pnt& aPOut,
-                                 Handle(BOPInt_Context)& theContext,
-                                 GeomAPI_ProjectPointOnSurf& aProjPL) 
+                                 Handle(IntTools_Context)& theContext,
+                                 GeomAPI_ProjectPointOnSurf& aProjPL,
+                                 const Standard_Real aDt,
+                                 const Standard_Real aTolE)
 {
   Standard_Integer aNbItMax;
-  Standard_Real aDt, aDtMin, aTolE, aTolF, aDist;
+  Standard_Real aDist, aDTol, aPM, anEps;
   Standard_Boolean bRet;
-  gp_Pnt aP1;
-  BRepAdaptor_Surface aBAS;
+  gp_Pnt aP1, aPS;
   //
-  bRet = Standard_False;
-  aTolE = BRep_Tool::Tolerance(aE);
-  aTolF = BRep_Tool::Tolerance(aF);
-  aDt = 2*(aTolE+aTolF);
-  aBAS.Initialize(aF, Standard_False);
-  //
-  aDtMin=5.e-4;
-  if (aDt < aDtMin) {
-    Standard_Real aR;
-    GeomAbs_SurfaceType aSType=aBAS.GetType();
-    switch (aSType) {
-    case GeomAbs_Cylinder:
-      aR = aBAS.Cylinder().Radius();
-      break;
-    case GeomAbs_Cone: {
-      gp_Lin aL(aBAS.Cone().Axis());
-      aR = aL.Distance(aP);
-      break;
-    }
-    case GeomAbs_Sphere:
-      aR = aBAS.Sphere().Radius();
-      break;
-    case GeomAbs_Torus:
-      aR = aBAS.Torus().MinorRadius();
-      break;
-    case GeomAbs_SurfaceOfRevolution:
-      aR=1.;
-      break;
-    default:
-      aR=0.001;
-    }
-    if (aR < 0.01) {
-      aDtMin=5.e-6;
-    }
-    else if (aR > 100.) {
-      aDtMin*=10;
-    }
-    if (aDt < aDtMin) {
-      aDt=aDtMin;
-    }
+  aDTol = Precision::Angular();
+  aPM = aP.XYZ().Modulus();
+  if (aPM > 1000.) {
+    aDTol = 5.e-16 * aPM;
   }
+  bRet = Standard_False;
+  aNbItMax = 15;
+  anEps = Precision::SquareConfusion();
   //
   GeomAPI_ProjectPointOnSurf& aProj=theContext->ProjPS(aF);
-  aNbItMax = 15;
+  //
+  aPS=aP;
+  aProj.Perform(aPS);
+  if (!aProj.IsDone()) {
+    return bRet;
+  }
+  aPS=aProj.NearestPoint();
+  aProjPL.Perform(aPS);
+  aPS=aProjPL.NearestPoint();
+  //
+  aPS.SetXYZ(aPS.XYZ()+2.*aTolE*aDB.XYZ());
+  aProj.Perform(aPS);
+  if (!aProj.IsDone()) {
+    return bRet;
+  }
+  aPS=aProj.NearestPoint();
+  aProjPL.Perform(aPS);
+  aPS=aProjPL.NearestPoint();
   //
   do {
-    aP1.SetCoord(aP.X()+aDt*aDB.X(),
-                 aP.Y()+aDt*aDB.Y(),
-                 aP.Z()+aDt*aDB.Z());
+    aP1.SetXYZ(aPS.XYZ()+aDt*aDB.XYZ());
     //
     aProj.Perform(aP1);
     if (!aProj.IsDone()) {
@@ -1908,12 +1967,90 @@ Standard_Boolean FindPointInFace(const TopoDS_Edge& aE,
     aProjPL.Perform(aPOut);
     aPOut = aProjPL.NearestPoint();
     //
-    gp_Vec aV(aP, aPOut);
+    gp_Vec aV(aPS, aPOut);
+    if (aV.SquareMagnitude() < anEps) {
+      return bRet;
+    }
     aDB.SetXYZ(aV.XYZ());
-  } while (aDist>Precision::Angular() && --aNbItMax);
+  } while (aDist > aDTol && --aNbItMax);
   //
-  bRet = aDist < Precision::Angular();
+  bRet = aDist < aDTol;
   return bRet;
+}
+//=======================================================================
+//function : MinStep3D
+//purpose  : 
+//=======================================================================
+Standard_Real MinStep3D(const TopoDS_Edge& theE1,
+                        const TopoDS_Face& theF1,
+                        const BOPTools_ListOfCoupleOfShape& theLCS,
+                        const gp_Pnt& aP)
+{
+  Standard_Real aDt, aTolE, aTolF, aDtMax, aDtMin, aR;
+  BOPTools_CoupleOfShape aCS1;
+  BOPTools_ListOfCoupleOfShape aLCS;
+  BOPTools_ListIteratorOfListOfCoupleOfShape aIt;
+  BRepAdaptor_Surface aBAS;
+  //
+  aLCS = theLCS;
+  aCS1.SetShape1(theE1);
+  aCS1.SetShape2(theF1);
+  aLCS.Append(aCS1);
+  //
+  aTolE = BRep_Tool::Tolerance(theE1);
+  aDtMax = -1.;
+  aDtMin = 5.e-6;
+  //
+  aIt.Initialize(aLCS);
+  for (; aIt.More(); aIt.Next()) {
+    const BOPTools_CoupleOfShape& aCS = aIt.Value();
+    const TopoDS_Face& aF = (*(TopoDS_Face*)(&aCS.Shape2()));
+    //
+    aTolF = BRep_Tool::Tolerance(aF);
+    aDt = 2*(aTolE + aTolF);
+    //
+    aR = 0.;
+    aBAS.Initialize(aF, Standard_False);
+    GeomAbs_SurfaceType aSType = aBAS.GetType();
+    switch (aSType) {
+    case GeomAbs_Cylinder: {
+      aR = aBAS.Cylinder().Radius();
+      break;
+    }
+    case GeomAbs_Cone: {
+      gp_Lin aL(aBAS.Cone().Axis());
+      aR = aL.Distance(aP);
+      break;
+    }
+    case GeomAbs_Sphere: {
+      aDtMin = Max(aDtMin, 5.e-4);
+      aR = aBAS.Sphere().Radius();
+      break;
+    }
+    case GeomAbs_Torus: {
+      aR = aBAS.Torus().MajorRadius();
+      break;
+    }
+    default:
+      aDtMin = Max(aDtMin, 5.e-4);
+      break;
+    }
+    //
+    if (aR > 100.) {
+      Standard_Real d = 10*Precision::PConfusion();
+      aDtMin = Max(aDtMin, sqrt(d*d + 2*d*aR));
+    }
+    //
+    if (aDt > aDtMax) {
+      aDtMax = aDt;
+    }
+  }
+  //
+  if (aDtMax < aDtMin) {
+    aDtMax = aDtMin;
+  }
+  //
+  return aDtMax;
 }
 //=======================================================================
 //function : IsOpenShell
@@ -1962,8 +2099,8 @@ Standard_Boolean BOPTools_AlgoTools::IsOpenShell(const TopoDS_Shell& aSh)
 //function : IsInvertedSolid
 //purpose  : 
 //=======================================================================
-Standard_Boolean 
-  BOPTools_AlgoTools::IsInvertedSolid(const TopoDS_Solid& aSolid)
+Standard_Boolean BOPTools_AlgoTools::IsInvertedSolid
+  (const TopoDS_Solid& aSolid)
 {
   Standard_Real aTolS;
   TopAbs_State aState;

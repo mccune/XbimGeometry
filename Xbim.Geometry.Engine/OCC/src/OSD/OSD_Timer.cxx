@@ -19,19 +19,13 @@
 //         system call gettimeofday. This function is portable and give us
 //         elapsed time in seconds and microseconds.
 
-#ifdef HAVE_CONFIG_H
-# include <config.h>
-#endif
-
 #include <OSD_Timer.ixx>
 
 #ifndef WNT
 
 //---------- No Windows NT Systems ----------------------------------
 
-#ifdef HAVE_SYS_TIME_H
-# include <sys/time.h>
-#endif
+#include <sys/time.h>
 
 //=======================================================================
 //function : GetWallClockTime
@@ -121,7 +115,7 @@ void OSD_Timer::Reset ()
 //purpose  : 
 //=======================================================================
 
-void OSD_Timer::Show ()
+void OSD_Timer::Show() const
 {
   Show (cout);
 }
@@ -131,16 +125,14 @@ void OSD_Timer::Show ()
 //purpose  :
 //=======================================================================
 
-Standard_Real OSD_Timer::ElapsedTime()
+Standard_Real OSD_Timer::ElapsedTime() const
 {
-  if (!Stopped)
+  if (Stopped)
   {
-    // update cumulative time
-    Stop();
-    Start();
+    return TimeCumul;
   }
 
-  return TimeCumul;
+  return TimeCumul + GetWallClockTime() - TimeStart;
 }
 
 //=======================================================================
@@ -148,43 +140,39 @@ Standard_Real OSD_Timer::ElapsedTime()
 //purpose  : 
 //=======================================================================
 
-void OSD_Timer::Show (Standard_Real&    seconds,
-                      Standard_Integer& minutes,
-                      Standard_Integer& hours,
-                      Standard_Real&    CPUtime) 
+void OSD_Timer::Show (Standard_Real&    theSeconds,
+                      Standard_Integer& theMinutes,
+                      Standard_Integer& theHours,
+                      Standard_Real&    theCPUtime) const
 {
-  Standard_Boolean StopSav=Stopped;
-  if (!StopSav) Stop();
-
-  Compute (TimeCumul, hours, minutes, seconds);
-  OSD_Chronometer::Show(CPUtime);
-
-  if (!StopSav) Start();
+  const Standard_Real aTimeCumul = Stopped
+                                 ? TimeCumul
+                                 : TimeCumul + GetWallClockTime() - TimeStart;
+  Compute (aTimeCumul, theHours, theMinutes, theSeconds);
+  OSD_Chronometer::Show (theCPUtime);
 }
-
 
 //=======================================================================
 //function : Show
 //purpose  : 
 //=======================================================================
 
-void OSD_Timer::Show (Standard_OStream& os)
+void OSD_Timer::Show (Standard_OStream& os) const
 {
-  Standard_Boolean StopSav=Stopped;
-  if (!StopSav) Stop();
-  
-  Standard_Integer heure,minut;
-  Standard_Real    second;
-  Compute (TimeCumul, heure, minut, second);
+  const Standard_Real aTimeCumul = Stopped
+                                 ? TimeCumul
+                                 : TimeCumul + GetWallClockTime() - TimeStart;
 
-  std::streamsize prec = os.precision (12); 
-  os << "Elapsed time: " << heure << " Hours " << 
-                            minut << " Minutes " <<
-                           second << " Seconds " << endl;
+  Standard_Integer anHours, aMinutes;
+  Standard_Real    aSeconds;
+  Compute (aTimeCumul, anHours, aMinutes, aSeconds);
+
+  std::streamsize prec = os.precision (12);
+  os << "Elapsed time: " << anHours  << " Hours "   <<
+                            aMinutes << " Minutes " <<
+                            aSeconds << " Seconds " << endl;
   OSD_Chronometer::Show(os);
   os.precision (prec);
-  
-  if (!StopSav) Start();  
 }
 
 //=======================================================================

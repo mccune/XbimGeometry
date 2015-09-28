@@ -19,20 +19,6 @@
 #include <Storage_StreamUnknownTypeError.hxx>
 #include <Standard_PCharacter.hxx>
 
-// Propagate the improvement (BUC60808) on all platforms
-// #ifdef WNT
-#define BUC60808
-// BUC60808 : standard output in MS Visual C++ limites the quantity of figures (digits)
-// in part of number after fixed point. The quantity of figures after fixed point 
-// could not be more than 15 when we output double number using standard MS VS output operator '<<'.
-// For example, the maximum double value DBL_MAX = 1.7976931348623157e+308 (see float.h) after 
-// cout<<setprecision(17)<<DBL_MAX  becomes 1.79769313486232e+308  in stream of output 
-// (it could be a file stream). When the number 1.79769313486232e+308 is read from the
-// i/o streame (file, for example) it occurs more than allowed maximum value of double 
-// type - 1.7976931348623157e+308.  Such value is considered as infinite. When it is written 
-// to file (for example)  again it is written as 1.#INF. Such value can't be read from file next time.
-//#endif
-
 const Standard_CString MAGICNUMBER = "CMPFILE";
 
 //=======================================================================
@@ -87,7 +73,18 @@ Storage_Error FSD_CmpFile::Open(const TCollection_AsciiString& aName,const Stora
 
   if (OpenMode() == Storage_VSNone) {
 
-#if !defined(IRIX) && !defined(DECOSF1)
+#if defined(_WNT32)
+    TCollection_ExtendedString aWName(aName);
+    if (aMode == Storage_VSRead) {
+      myStream.open((const wchar_t*)aWName.ToExtString(),ios::in|ios::binary); // ios::nocreate is not portable
+    }
+    else if (aMode == Storage_VSWrite) {
+      myStream.open((const wchar_t*)aWName.ToExtString(),ios::out|ios::binary);
+    }
+    else if (aMode == Storage_VSReadWrite) {
+      myStream.open((const wchar_t*)aWName.ToExtString(),ios::in|ios::out|ios::binary);
+    }
+#elif !defined(IRIX) && !defined(DECOSF1)
     if (aMode == Storage_VSRead) {
       myStream.open(aName.ToCString(),ios::in|ios::binary); // ios::nocreate is not portable
     }
@@ -571,27 +568,25 @@ Storage_BaseDriver& FSD_CmpFile::GetBoolean(Standard_Boolean& aValue)
 
 Storage_BaseDriver& FSD_CmpFile::GetReal(Standard_Real& aValue)
 {
-#ifdef BUC60808
   char realbuffer[100];
 
   realbuffer[0] = '\0';
   if (!(myStream >> realbuffer)) {
+#ifdef OCCT_DEBUG
     cerr << "%%%ERROR: read error of double at offset " << myStream.tellg() << endl;
     cerr << "\t buffer is" << realbuffer<< endl;
+#endif
     Storage_StreamTypeMismatchError::Raise();
   }
   if (!OSD::CStringToReal(realbuffer,aValue)) {
+#ifdef OCCT_DEBUG
     cerr << "%%%ERROR: read error of double at offset " << myStream.tellg() << endl;
     cerr << "\t buffer is" << realbuffer<< endl;
+#endif
     Storage_StreamTypeMismatchError::Raise();
   }
 
   return *this;
-#else
-  if (!(myStream >> aValue)) Storage_StreamTypeMismatchError::Raise();
-
-  return *this;
-#endif
 }
 
 //=======================================================================
@@ -601,7 +596,6 @@ Storage_BaseDriver& FSD_CmpFile::GetReal(Standard_Real& aValue)
 
 Storage_BaseDriver& FSD_CmpFile::GetShortReal(Standard_ShortReal& aValue)
 {
-#ifdef BUC60808
   char realbuffer[100];
   Standard_Real r = 0.0;
 
@@ -613,10 +607,6 @@ Storage_BaseDriver& FSD_CmpFile::GetShortReal(Standard_ShortReal& aValue)
   aValue = (Standard_ShortReal)r;
 
   return *this;
-#else
-  if (!(myStream >> aValue)) Storage_StreamTypeMismatchError::Raise();
- return *this;
-#endif
 }
 
 //=======================================================================

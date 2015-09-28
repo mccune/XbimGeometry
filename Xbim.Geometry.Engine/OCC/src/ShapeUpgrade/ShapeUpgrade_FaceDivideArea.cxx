@@ -96,7 +96,11 @@ ShapeUpgrade_FaceDivideArea::ShapeUpgrade_FaceDivideArea(const TopoDS_Face& F)
       aB.Add(aCopyRes,aFace);
   }
   if(isModified)
+  {
+    if (aCopyRes.ShapeType() == TopAbs_WIRE || aCopyRes.ShapeType() == TopAbs_SHELL)
+      aCopyRes.Closed (BRep_Tool::IsClosed (aCopyRes));
     Context()->Replace(aResult,aCopyRes);
+  }
   myStatus |= aStatus;  
   myResult = Context()->Apply ( aResult );
   return Status ( ShapeExtend_DONE ); 

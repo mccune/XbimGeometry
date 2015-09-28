@@ -75,6 +75,7 @@
 #include <Geom_ConicalSurface.hxx>
 #include <Geom_Curve.hxx>
 #include <Geom_Line.hxx>
+#include <Geom_Plane.hxx>
 #include <Geom_Conic.hxx>
 #include <Geom_TrimmedCurve.hxx>
 #include <GCPnts_QuasiUniformDeflection.hxx>
@@ -151,7 +152,7 @@ static Standard_Integer NbFTE       = 1;
 static Standard_Integer NbExtE      = 1;
 #endif
 
-#ifdef DEB
+#ifdef OCCT_DEBUG
 static Standard_Boolean AffichExtent = Standard_False;
 #endif
 
@@ -249,7 +250,7 @@ static void PutInBounds (const TopoDS_Face&          F,
   Handle (Geom_Surface) S   = BRep_Tool::Surface(F,L);
 
   if (S->IsInstance(STANDARD_TYPE(Geom_RectangularTrimmedSurface))) {
-    S = (*(Handle_Geom_RectangularTrimmedSurface*)&S)->BasisSurface();
+    S = (*(Handle(Geom_RectangularTrimmedSurface)*)&S)->BasisSurface();
   }
   //---------------
   // Recadre en U.
@@ -1882,7 +1883,7 @@ void BRepOffset_Tool::Inter3D(const TopoDS_Face& F1,
 	    TopoDS_Edge anEdge = TopoDS::Edge(eseq(i));
 	    BRepLib::SameParameter(anEdge, aSameParTol, Standard_True);
 	    Standard_Real EdgeTol = BRep_Tool::Tolerance(anEdge);
-#ifdef DEB
+#ifdef OCCT_DEBUG
 	    cout<<"Tolerance of glued E =      "<<EdgeTol<<endl;
 #endif
 	    if (EdgeTol > 1.e-2)
@@ -1892,7 +1893,7 @@ void BRepOffset_Tool::Inter3D(const TopoDS_Face& F1,
 	      {
 		ReconstructPCurves(anEdge);
 		BRepLib::SameParameter(anEdge, aSameParTol, Standard_True);
-#ifdef DEB
+#ifdef OCCT_DEBUG
 	        cout<<"After projection tol of E = "<<BRep_Tool::Tolerance(anEdge)<<endl;
 #endif
 	      }
@@ -2213,7 +2214,7 @@ static Standard_Boolean  ProjectVertexOnEdge(TopoDS_Vertex&     V,
     }
   }
 
-#ifdef DEB
+#ifdef OCCT_DEBUG
   if (AffichExtent) {
     Standard_Real Dist = P.Distance(C.Value(U));
     if (Dist > TolConf) {
@@ -2315,7 +2316,7 @@ void BRepOffset_Tool::Inter2d (const TopoDS_Face&    F,
 //	if (j == 1)  C2 = BRep_Tool::CurveOnSurface(E2,F,fl2[0],fl2[1]);
 //	else         C2 = BRep_Tool::CurveOnSurface(TopoDS::Edge(E2.Reversed()),
 //						    F,fl2[0],fl2[1]);
-#ifdef DEB
+#ifdef OCCT_DEBUG
 	if (C1.IsNull() || C2.IsNull()) {
 	  cout <<"Inter2d : Pas de pcurve"<<endl;
 #ifdef DRAW
@@ -2427,7 +2428,7 @@ void BRepOffset_Tool::Inter2d (const TopoDS_Face&    F,
 	    Standard_Real U1on2 = IntP2.ParamOnFirst();
 	    Standard_Real U2on1 = IntP1.ParamOnSecond();
 	    Standard_Real U2on2 = IntP2.ParamOnSecond();
-#ifdef DEB
+#ifdef OCCT_DEBUG
 	    cout << " BRepOffset_Tool::Inter2d SEGMENT d intersection" << endl;
 	    cout << "     ===> Parametres sur Curve1 : ";
 	    cout << U1on1 << " " << U1on2 << endl;
@@ -2485,7 +2486,7 @@ void BRepOffset_Tool::Inter2d (const TopoDS_Face&    F,
     LV.Clear();LV.Append(VF); LV.Append(VL);
   }
 
-#ifdef DEB
+#ifdef OCCT_DEBUG
   if (!YaSol) {
     cout <<"Inter2d : Pas de solution"<<endl;
 #ifdef DRAW
@@ -2597,7 +2598,7 @@ static void MakeFace(const Handle(Geom_Surface)& S,
   Standard_Boolean vmindegen = isVminDegen, vmaxdegen = isVmaxDegen;
   Handle(Geom_Surface) theSurf = S;
   if (S->DynamicType() == STANDARD_TYPE(Geom_RectangularTrimmedSurface))
-    theSurf = (*(Handle_Geom_RectangularTrimmedSurface*)&S)->BasisSurface();
+    theSurf = (*(Handle(Geom_RectangularTrimmedSurface)*)&S)->BasisSurface();
   if (theSurf->DynamicType() == STANDARD_TYPE(Geom_ConicalSurface))
     {
       Handle(Geom_ConicalSurface) ConicalS = *((Handle(Geom_ConicalSurface)*) &theSurf);
@@ -3265,7 +3266,7 @@ Standard_Boolean BRepOffset_Tool::EnLargeFace
   //Special treatment for conical surfaces
   Handle(Geom_Surface) theSurf = S;
   if (S->DynamicType() == STANDARD_TYPE(Geom_RectangularTrimmedSurface))
-    theSurf = (*(Handle_Geom_RectangularTrimmedSurface*)&S)->BasisSurface();
+    theSurf = (*(Handle(Geom_RectangularTrimmedSurface)*)&S)->BasisSurface();
   if (theSurf->DynamicType() == STANDARD_TYPE(Geom_ConicalSurface))
     {
       Handle(Geom_ConicalSurface) ConicalS = *((Handle(Geom_ConicalSurface)*) &theSurf);
@@ -3609,101 +3610,135 @@ void BRepOffset_Tool::ExtentFace (const TopoDS_Face&            F,
     TopoDS_Edge          ERef;
     TopoDS_Vertex        V1,V2;
 
-    for (exp2.Init(W.Oriented(TopAbs_FORWARD),TopAbs_EDGE); 
-	 exp2.More(); exp2.Next()) {
+    for (exp2.Init(W.Oriented(TopAbs_FORWARD),TopAbs_EDGE); exp2.More(); exp2.Next())
+    {
       const TopoDS_Edge& E = TopoDS::Edge(exp2.Current());
       TopExp::Vertices (E,V1,V2);
       BRep_Tool::Range (E,f,l);
       TopoDS_Vertex V;
-      if (Build.IsBound(E)) {
-	const TopoDS_Edge& NEOnV1 = TopoDS::Edge(NOnV1(E));
-	if (Build.IsBound(NEOnV1) && 
-	    (ToBuild.IsBound(E) || ToBuild.IsBound(NEOnV1))) {
-	  if (E.IsSame(NEOnV1)) 
-	    V = TopExp::FirstVertex(TopoDS::Edge(Build(E)));
-	  else {
-	    //---------------
-	    // intersection.
-	    //---------------
-	    if (!Build.IsBound(V1)) {
-	      Inter2d (EF,TopoDS::Edge(Build(E)),
-		       TopoDS::Edge(Build(NEOnV1)),LV,/*TolConf*/Precision::Confusion());
-	      if (Build(E).Orientation() == TopAbs_FORWARD) {
-		V = TopoDS::Vertex(LV.First());
-	      }
-	      else {
-		V = TopoDS::Vertex(LV.Last());
-	      }
-	    }
-	    else {
-	      V = TopoDS::Vertex(Build(V1));
-	      if (MVE (V1).Extent() > 2) {
-		V.Orientation(TopAbs_FORWARD);
-		if (Build(E).Orientation() == TopAbs_REVERSED)
-		  V.Orientation(TopAbs_REVERSED);
-		ProjectVertexOnEdge(V,TopoDS::Edge(Build(E)),TolConf);
-	      }
-	    }
-	  }
-	}
-	else {
-	  //------------
-	  //projection
-	  //------------
-	  V = V1;
-	  if (ConstShapes.IsBound(V1)) V = TopoDS::Vertex(ConstShapes(V1));
-	  V.Orientation(TopAbs_FORWARD);
-	  if (Build(E).Orientation() == TopAbs_REVERSED)
-	    V.Orientation(TopAbs_REVERSED);
-	  if (!TryParameter    (E,V,TopoDS::Edge(Build(E)),TolConf))
-	    ProjectVertexOnEdge(V,TopoDS::Edge(Build(E)),TolConf);
-	}
-	ConstShapes.Bind(V1,V);
-	Build.Bind      (V1,V);
-	const TopoDS_Edge& NEOnV2 = TopoDS::Edge(NOnV2(E));
-	if (Build.IsBound(NEOnV2) && 
-	    (ToBuild.IsBound(E) || ToBuild.IsBound(NEOnV2))) {
-	  if (E.IsSame(NEOnV2)) 
-	    V = TopExp::LastVertex(TopoDS::Edge(Build(E)));
-	  else {
-	    //--------------
-	    // intersection.
-	    //---------------
-	    if (!Build.IsBound(V2)) {
-	      Inter2d (EF,TopoDS::Edge(Build(E)),
-		       TopoDS::Edge(Build(NEOnV2)),LV,/*TolConf*/Precision::Confusion());
-	      if (Build(E).Orientation() == TopAbs_FORWARD) {
-		V = TopoDS::Vertex(LV.Last());
-	      }
-	      else {
-		V = TopoDS::Vertex(LV.First());
-	      }
-	    }
-	    else {
-	      V = TopoDS::Vertex(Build(V2));
-	      if (MVE (V2).Extent() > 2) {
-		V.Orientation(TopAbs_REVERSED);
-		if (Build(E).Orientation() == TopAbs_REVERSED)
-		  V.Orientation(TopAbs_FORWARD);
-		ProjectVertexOnEdge(V,TopoDS::Edge(Build(E)),TolConf);
-	      }
-	    }
-	  }
-	}
-	else {
-	  //------------
-	  //projection
-	  //------------
-	  V = V2;
-	  if (ConstShapes.IsBound(V2))  V = TopoDS::Vertex(ConstShapes(V2));
-	  V.Orientation(TopAbs_REVERSED);	
-	  if (Build(E).Orientation() == TopAbs_REVERSED)
-	    V.Orientation(TopAbs_FORWARD);
-	  if (!TryParameter (E,V,TopoDS::Edge(Build(E)),TolConf))
-	    ProjectVertexOnEdge(V,TopoDS::Edge(Build(E)),TolConf);
-	}
-	ConstShapes.Bind(V2,V);
-	Build.Bind(V2,V);
+      if (Build.IsBound(E))
+      {
+        const TopoDS_Edge& NEOnV1 = TopoDS::Edge(NOnV1(E));
+        if (Build.IsBound(NEOnV1) && (ToBuild.IsBound(E) || ToBuild.IsBound(NEOnV1)))
+        {
+          if (E.IsSame(NEOnV1))
+            V = TopExp::FirstVertex(TopoDS::Edge(Build(E)));
+          else
+          {
+            //---------------
+            // intersection.
+            //---------------
+            if (!Build.IsBound(V1))
+            {
+              Inter2d (EF,TopoDS::Edge(Build(E)), TopoDS::Edge(Build(NEOnV1)),LV,/*TolConf*/Precision::Confusion());
+              
+              if(!LV.IsEmpty())
+              {
+                if (Build(E).Orientation() == TopAbs_FORWARD)
+                {
+                  V = TopoDS::Vertex(LV.First());
+                }
+                else
+                {
+                  V = TopoDS::Vertex(LV.Last());
+                }
+              }
+              else
+              {
+                return;
+              }
+            }
+            else
+            {
+              V = TopoDS::Vertex(Build(V1));
+              if (MVE (V1).Extent() > 2)
+              {
+                V.Orientation(TopAbs_FORWARD);
+                if (Build(E).Orientation() == TopAbs_REVERSED)
+                  V.Orientation(TopAbs_REVERSED);
+
+                ProjectVertexOnEdge(V,TopoDS::Edge(Build(E)),TolConf);
+              }
+            }
+          }
+        }
+        else
+        {
+          //------------
+          //projection
+          //------------
+          V = V1;
+          if (ConstShapes.IsBound(V1)) V = TopoDS::Vertex(ConstShapes(V1));
+          V.Orientation(TopAbs_FORWARD);
+          if (Build(E).Orientation() == TopAbs_REVERSED)
+            V.Orientation(TopAbs_REVERSED);
+          if (!TryParameter    (E,V,TopoDS::Edge(Build(E)),TolConf))
+            ProjectVertexOnEdge(V,TopoDS::Edge(Build(E)),TolConf);
+        }
+
+        ConstShapes.Bind(V1,V);
+        Build.Bind      (V1,V);
+        const TopoDS_Edge& NEOnV2 = TopoDS::Edge(NOnV2(E));
+        if (Build.IsBound(NEOnV2) && (ToBuild.IsBound(E) || ToBuild.IsBound(NEOnV2)))
+        {
+          if (E.IsSame(NEOnV2))
+            V = TopExp::LastVertex(TopoDS::Edge(Build(E)));
+          else
+          {
+            //--------------
+            // intersection.
+            //---------------
+
+            if (!Build.IsBound(V2))
+            {
+              Inter2d (EF,TopoDS::Edge(Build(E)), TopoDS::Edge(Build(NEOnV2)),LV,/*TolConf*/Precision::Confusion());
+
+              if(!LV.IsEmpty())
+              {
+                if (Build(E).Orientation() == TopAbs_FORWARD)
+                {
+                  V = TopoDS::Vertex(LV.Last());
+                }
+                else
+                {
+                  V = TopoDS::Vertex(LV.First());
+                }
+              }
+              else
+              {
+                return;
+              }
+            }
+            else
+            {
+              V = TopoDS::Vertex(Build(V2));
+              if (MVE (V2).Extent() > 2)
+              {
+                V.Orientation(TopAbs_REVERSED);
+                if (Build(E).Orientation() == TopAbs_REVERSED)
+                  V.Orientation(TopAbs_FORWARD);
+
+                ProjectVertexOnEdge(V,TopoDS::Edge(Build(E)),TolConf);
+              }
+            }
+          }
+        }
+        else
+        {
+          //------------
+          //projection
+          //------------
+          V = V2;
+          if (ConstShapes.IsBound(V2))
+            V = TopoDS::Vertex(ConstShapes(V2));
+          V.Orientation(TopAbs_REVERSED);	
+          if (Build(E).Orientation() == TopAbs_REVERSED)
+            V.Orientation(TopAbs_FORWARD);
+          if (!TryParameter (E,V,TopoDS::Edge(Build(E)),TolConf))
+            ProjectVertexOnEdge(V,TopoDS::Edge(Build(E)),TolConf);
+        }
+        ConstShapes.Bind(V2,V);
+        Build.Bind(V2,V);
       }
     }
     
@@ -3713,7 +3748,7 @@ void BRepOffset_Tool::ExtentFace (const TopoDS_Face&            F,
     Standard_Real      U1,U2;
     Standard_Real      eps = Precision::Confusion();
 
-#ifdef DEB
+#ifdef OCCT_DEBUG
     TopLoc_Location    L;
 #endif
     B.MakeWire(NW);

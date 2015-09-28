@@ -319,7 +319,7 @@ namespace Xbim
 				pipeMaker1.Add(p, Standard_False, Standard_False);
 				pipeMaker1.Build();
 				if (pipeMaker1.IsDone() && pipeMaker1.MakeSolid())
-				{					
+				{		
 					//do any inner loops					
 					BRepPrim_Builder b;
 					TopoDS_Shell shell;
@@ -330,7 +330,8 @@ namespace Xbim
 					for (TopExp_Explorer explr(pipeOuter, TopAbs_FACE); explr.More(); explr.Next())
 					{
 						const TopoDS_Face& face = TopoDS::Face(explr.Current());
-						if (!face.IsEqual(pipeMaker1.FirstShape()) && !face.IsEqual(pipeMaker1.LastShape()))
+						//Opencascade 6.8 changed first and lastshape so that isEqual failed, there is an issue with orientation so use isSame 
+						if (!face.IsSame(pipeMaker1.FirstShape()) && !face.IsSame(pipeMaker1.LastShape()))
 							b.AddShellFace(shell, face);
 					}
 
@@ -347,7 +348,6 @@ namespace Xbim
 						pipeMaker2.Build();
 						if (pipeMaker2.IsDone() && pipeMaker2.MakeSolid())
 						{
-
 							XbimFace^ bottomInner = gcnew XbimFace(TopoDS::Face(pipeMaker2.FirstShape()));
 							XbimFace^ topInner = gcnew XbimFace(TopoDS::Face(pipeMaker2.LastShape()));
 							//add the inner loops to the end faces
@@ -357,10 +357,12 @@ namespace Xbim
 							for (TopExp_Explorer explr(pipeMaker2.Shape(), TopAbs_FACE); explr.More(); explr.Next())
 							{
 								const TopoDS_Face& face = TopoDS::Face(explr.Current());
-								if (!face.IsEqual(pipeMaker2.FirstShape()) && !face.IsEqual(pipeMaker2.LastShape()))
+								//Opencascade 6.8 changed first and lastshape so that isEqual failed, there is an issue with orientation so use isSame 
+								if (!face.IsSame(pipeMaker2.FirstShape()) && !face.IsSame(pipeMaker2.LastShape()))
 									b.AddShellFace(shell, face);
 							}
 						}
+						break; //only do one
 					}
 					//add top and bottom faces with their hole loops
 					b.AddShellFace(shell, bottomOuter);
@@ -370,9 +372,7 @@ namespace Xbim
 					pSolid = new TopoDS_Solid();
 					bs.MakeSolid(*pSolid);
 					bs.Add(*pSolid, shell);
-
 					Move(repItem->Position);
-					
 					return;
 
 				}
@@ -466,12 +466,32 @@ namespace Xbim
 			else //it is a simple Half space
 			{
 				IfcSurface^ surface = (IfcSurface^)hs->BaseSurface;
-				if (!dynamic_cast<IfcPlane^>(surface))
+				IfcPlane^ ifcPlane = dynamic_cast<IfcPlane^>(surface);
+				if (ifcPlane == nullptr)
 				{
 					XbimGeometryCreator::logger->WarnFormat("WS011: Non-Planar half spaces are not supported in Entity #{0}, it has been ignored", hs->EntityLabel);
 					return;
 				}
-				IfcPlane^ ifcPlane = (IfcPlane^)surface;
+#ifdef OCC_6_9_SUPPORTED
+
+
+				gp_Ax3 ax3 = XbimGeomPrim::ToAx3(ifcPlane->Position);
+				gp_Pln pln(ax3);
+				gp_Vec zVec = hs->AgreementFlag ? -pln.Axis().Direction() : pln.Axis().Direction();
+
+				gp_Pnt pnt = ax3.Location();
+				pnt.Translate(zVec);
+				BRepBuilderAPI_MakeFace  faceMaker(pln);
+				if (faceMaker.IsDone())
+				{
+					BRepPrimAPI_MakeHalfSpace halfSpaceBulder(faceMaker.Face(), pnt);
+					pSolid = new TopoDS_Solid();
+					*pSolid = TopoDS::Solid(halfSpaceBulder.Solid());
+				}
+
+#else
+
+
 				double z = hs->AgreementFlag ? -2e8 : 0;
 				XbimPoint3D corner(-1e8, -1e8, z);
 				 
@@ -479,6 +499,7 @@ namespace Xbim
 				XbimRect3D rect3D(corner, size);
 				Init(rect3D, hs->ModelOf->ModelFactors->Precision);
 				Move(ifcPlane->Position);
+#endif
 			}
 		}
 
@@ -667,10 +688,46 @@ namespace Xbim
 			FTol.SetTolerance(*pSolid, box->ModelOf->ModelFactors->Precision, TopAbs_VERTEX);
 		}
 
+
+		XbimSolid^ XbimSolid::BuildClippingList(IfcBooleanClippingResult^ solid, IXbimSolidSet^ clipList)
+		{
+			IfcBooleanOperand^ fOp = solid->FirstOperand;
+			IfcBooleanOperand^ sOp = solid->SecondOperand;
+			IfcBooleanClippingResult^ boolClip = dynamic_cast<IfcBooleanClippingResult^>(fOp);
+			if (boolClip!=nullptr)
+			{
+				clipList->Add(gcnew XbimSolid(sOp));
+				return XbimSolid::BuildClippingList(boolClip, clipList);
+			}
+			else //we need to build the solid
+			{
+				clipList->Add(gcnew XbimSolid(sOp));
+				return gcnew XbimSolid(fOp);
+			}
+		}
+
 		//Booleans
 		void XbimSolid::Init(IfcBooleanClippingResult^ solid)
 		{
+			XbimModelFactors^ mf = solid->ModelOf->ModelFactors;
 			IfcBooleanOperand^ fOp = solid->FirstOperand;
+#ifdef OCC_6_9_SUPPORTED			
+			IfcBooleanClippingResult^ boolClip = dynamic_cast<IfcBooleanClippingResult^>(fOp);
+			if (boolClip != nullptr)
+			{
+				IXbimSolidSet^ solidSet = gcnew XbimSolidSet();
+				XbimSolid^ body = XbimSolid::BuildClippingList(boolClip, solidSet);
+				IXbimSolidSet^ xbimSolidSet = body->Cut(solidSet, mf->PrecisionBoolean);
+				if (xbimSolidSet != nullptr && xbimSolidSet->First != nullptr)
+				{
+					pSolid = new TopoDS_Solid(); 
+					*pSolid = (XbimSolid^)(xbimSolidSet->First); //just take the first as that is what is intended by IFC schema
+				}
+				return;
+			}
+
+#endif
+			
 			IfcBooleanOperand^ sOp = solid->SecondOperand;
 			XbimSolid^ left = gcnew XbimSolid(fOp);
 			XbimSolid^ right = gcnew XbimSolid(sOp);
@@ -691,7 +748,7 @@ namespace Xbim
 				return;
 			}
 
-			XbimModelFactors^ mf = solid->ModelOf->ModelFactors;
+			
 			IXbimGeometryObject^ result;
 			try
 			{
@@ -717,6 +774,12 @@ namespace Xbim
 			}
 
 			XbimSolidSet^ xbimSolidSet = dynamic_cast<XbimSolidSet^>(result);
+#ifdef OCC_6_9_SUPPORTED //Later versions of OCC has fuzzy boolean which gives better results
+			if (xbimSolidSet != nullptr && xbimSolidSet->First != nullptr)
+			{
+				*pSolid = (XbimSolid^)(xbimSolidSet->First); //just take the first as that is what is intended by IFC schema
+			}
+#else // otherwise we have to make sure we get a solid when an error occurs
 			if (xbimSolidSet == nullptr || xbimSolidSet->First==nullptr)
 			{
 				XbimGeometryCreator::logger->ErrorFormat("ES002: Error performing boolean operation for entity #{0}={1}. The operation has been ignored", solid->EntityLabel, solid->GetType()->Name);
@@ -726,6 +789,7 @@ namespace Xbim
 			{
 				*pSolid = (XbimSolid^)(xbimSolidSet->First);
 			}
+#endif
 		}
 
 		void XbimSolid::Init(IfcBooleanOperand^ solid)
@@ -938,6 +1002,7 @@ namespace Xbim
 			Standard_Real srXmin, srYmin, srZmin, srXmax, srYmax, srZmax;
 			if (pBox.IsVoid()) return XbimRect3D::Empty;
 			pBox.Get(srXmin, srYmin, srZmin, srXmax, srYmax, srZmax);
+			GC::KeepAlive(this);
 			return XbimRect3D(srXmin, srYmin, srZmin, (srXmax - srXmin), (srYmax - srYmin), (srZmax - srZmin));
 		}
 
@@ -955,6 +1020,7 @@ namespace Xbim
 			{
 				GProp_GProps gProps;
 				BRepGProp::VolumeProperties(*pSolid, gProps, Standard_True);
+				GC::KeepAlive(this);
 				return gProps.Mass();
 			}
 			else
@@ -990,6 +1056,7 @@ namespace Xbim
 			{
 				GProp_GProps gProps;
 				BRepGProp::SurfaceProperties(*pSolid, gProps);
+				GC::KeepAlive(this);
 				return gProps.Mass();
 			}
 			else
@@ -1001,6 +1068,7 @@ namespace Xbim
 		{
 			if (!IsValid) return false;
 			BRepCheck_Analyzer analyser(*pSolid, Standard_True);
+			GC::KeepAlive(this);
 			return analyser.IsValid() == Standard_True;
 		}
 
@@ -1054,17 +1122,30 @@ namespace Xbim
 					return gcnew XbimSolidSet(this); // the result would be no change so return this		
 				}
 			}
-			
-			ShapeFix_ShapeTolerance fixTol;
-			fixTol.SetTolerance(solidCut, tolerance);
-			fixTol.SetTolerance(this, tolerance);
+
 			
 			String^ err="";
 			try
 			{
+#ifdef OCC_6_9_SUPPORTED
+				TopTools_ListOfShape shapeTools;
+				shapeTools.Append(solidCut);
+				TopTools_ListOfShape shapeObjects;
+				shapeObjects.Append(this);
+				BRepAlgoAPI_Cut boolOp;
+				boolOp.SetArguments(shapeObjects);
+				boolOp.SetTools(shapeTools);
+				boolOp.SetFuzzyValue(tolerance);
+				boolOp.Build();
+#else
+				ShapeFix_ShapeTolerance fixTol;
+				fixTol.SetTolerance(solidCut, tolerance);
+				fixTol.SetTolerance(this, tolerance);
 				BRepAlgoAPI_Cut boolOp(this, solidCut);
+#endif
 				if (boolOp.ErrorStatus() == 0)
 					return gcnew XbimSolidSet(boolOp.Shape());
+				err = "Error = " + boolOp.ErrorStatus();
 			}
 			catch (Standard_Failure e)
 			{
@@ -1209,7 +1290,7 @@ namespace Xbim
 			BRepAlgoAPI_Section boolOp(this, faceSection, false);
 			boolOp.ComputePCurveOn2(Standard_True);
 			boolOp.Build();
-			GC::KeepAlive(faceSection);
+			
 			if (boolOp.IsDone())
 			{
 				Handle(TopTools_HSequenceOfShape) edges = new TopTools_HSequenceOfShape();
@@ -1260,9 +1341,12 @@ namespace Xbim
 					}
 					
 					return gcnew XbimFaceSet(result);
-				}								
+				}						
+				GC::KeepAlive(faceSection);		
+				GC::KeepAlive(toSection);
 			}
 			XbimGeometryCreator::logger->WarnFormat("WS008:Boolean Section operation has failed to create a section");
+			
 			return XbimFaceSet::Empty;
 		}
 

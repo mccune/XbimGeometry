@@ -21,6 +21,7 @@
 #include <TopoDS_Iterator.hxx>
 #include <TopExp_Explorer.hxx>
 #include <BRep_Builder.hxx>
+#include <BRep_Tool.hxx>
 #include <ShapeExtend.hxx>
 #include <ShapeBuild_Edge.hxx>
 #include <TopoDS.hxx>
@@ -69,8 +70,8 @@ TopoDS_Shape ShapeBuild_ReShape::Apply (const TopoDS_Shape& shape,
   // if shape replaced, apply modifications to the result recursively 
   Standard_Boolean aConsLoc = ModeConsiderLocation();
   if ( (aConsLoc && ! newsh.IsPartner (shape)) || 
-      (!aConsLoc &&! newsh.IsSame ( shape )) ) {
-  
+      (!aConsLoc &&! newsh.IsSame ( shape )) )
+  {
     TopoDS_Shape res = Apply ( newsh, until );
     myStatus |= ShapeExtend::EncodeStatus ( ShapeExtend_DONE1 );
     return res;
@@ -123,9 +124,12 @@ TopoDS_Shape ShapeBuild_ReShape::Apply (const TopoDS_Shape& shape,
     ShapeBuild_Edge sbe;
     sbe.CopyRanges ( TopoDS::Edge ( result ), TopoDS::Edge ( shape ));
   }
+  else if (st == TopAbs_WIRE || st == TopAbs_SHELL)
+    result.Closed (BRep_Tool::IsClosed (result));
   result.Orientation(orient);
   myStatus = locStatus;
   Replace ( shape, result );
+
   return result;
 }
 

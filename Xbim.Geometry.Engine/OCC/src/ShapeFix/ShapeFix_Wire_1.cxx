@@ -290,6 +290,9 @@ static Standard_Real AdjustOnPeriodic3d (const Handle(Geom_Curve)& c,
 
   if (convert) 
   {
+    // Check that gap satisfies the precision - in this case no convertation produced
+    if (cpnt1.Distance(vpnt) < preci && cpnt2.Distance(vpnt) < preci)
+      return Standard_False;
 
     Handle(Geom_BSplineCurve) bsp1, bsp2;
     Handle(Geom_Curve) c;
@@ -360,7 +363,7 @@ static Standard_Real AdjustOnPeriodic3d (const Handle(Geom_Curve)& c,
 	}
 	catch (Standard_Failure) 
         {
-#ifdef DEB 
+#ifdef OCCT_DEBUG
 	  cout << "Warning: ShapeFix_Wire_1::FixGap3d: Exception in TrimmedCurve" <<first<<" " <<last<<endl;
 	  Standard_Failure::Caught()->Print(cout); cout << endl; 
 #endif  
@@ -635,7 +638,7 @@ static Standard_Real AdjustOnPeriodic3d (const Handle(Geom_Curve)& c,
       }
       catch (Standard_Failure) 
       {
-#ifdef DEB       
+#ifdef OCCT_DEBUG
 	cout << "Warning: ShapeFix_Wire_1::FixGap3d: Exception in TrimmedCurve      :"<<endl;
 	Standard_Failure::Caught()->Print(cout); cout << endl;
 #endif
@@ -943,7 +946,7 @@ static Standard_Real AdjustOnPeriodic2d (const Handle(Geom2d_Curve)& pc,
 	}
 	catch (Standard_Failure) 
         {
-#ifdef DEB
+#ifdef OCCT_DEBUG
 	  cout << "Warning: ShapeFix_Wire_1::FixGap2d: Exception in TrimmedCurve2d" <<first<<" " <<last<<endl;
 	  Standard_Failure::Caught()->Print(cout); cout << endl; 
 #endif  
@@ -1523,7 +1526,7 @@ static Standard_Real AdjustOnPeriodic2d (const Handle(Geom2d_Curve)& pc,
       catch (Standard_Failure) 
       {
 	
-#ifdef DEB 		
+#ifdef OCCT_DEBUG
 	cout << "Warning: ShapeFix_Wire_1::FixGap2d: Exception in TrimmedCurve2d  :"<<endl;
 	Standard_Failure::Caught()->Print(cout); cout << endl;
 #endif	

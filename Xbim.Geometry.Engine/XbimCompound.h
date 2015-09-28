@@ -19,6 +19,7 @@ namespace Xbim
 		ref class XbimCompound : IXbimGeometryObjectSet, XbimOccShape
 		{
 		private:
+			
 			IntPtr ptrContainer;
 			virtual property TopoDS_Compound* pCompound
 			{
@@ -40,9 +41,10 @@ namespace Xbim
 			void Init(IfcFacetedBrepWithVoids^ solid);
 			void Init(IfcClosedShell^ solid);
 			//Helpers
-			XbimFace^ BuildFace(List<XbimWire^>^ wires, int label);
+			XbimFace^ BuildFace(List<Tuple<XbimWire^, IfcPolyLoop^>^>^ wires, int label);
 			static void  GetConnected(HashSet<XbimSolid^>^ connected, Dictionary<XbimSolid^, HashSet<XbimSolid^>^>^ clusters, XbimSolid^ clusterAround);
-
+			
+			
 		public:
 			~XbimCompound(){ InstanceCleanup(); }
 			!XbimCompound(){ InstanceCleanup(); }
@@ -63,7 +65,12 @@ namespace Xbim
 			virtual property int Count{int get(); }
 			virtual property IXbimGeometryObject^ First{IXbimGeometryObject^ get(); }
 			virtual IXbimGeometryObject^ Transform(XbimMatrix3D matrix3D) override;
-
+			static List<XbimSolid^>^  GetDiscrete(List<XbimSolid^>^%);
+#ifdef OCC_6_9_SUPPORTED //OCC 6.9.0. is better with complex booleans
+			static int MaxFacesToSew = 3000;
+#else
+			static int MaxFacesToSew = 1000;
+#endif
 #pragma endregion
 			//operators
 			operator const TopoDS_Compound& () { return *pCompound; }
@@ -79,8 +86,9 @@ namespace Xbim
 			XbimCompound^ Union(XbimCompound^ solids, double tolerance);
 			XbimCompound^ Intersection(XbimCompound^ solids, double tolerance);
 			virtual property XbimRect3D BoundingBox {XbimRect3D get()override ; }
+			virtual property double Volume{double get(); }
 
-			void Sew();
+			bool Sew();
 		};
 
 	}

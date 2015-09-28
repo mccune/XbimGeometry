@@ -13,6 +13,9 @@ using Xbim.IO;
 
 namespace GeometryTests
 {
+    [DeploymentItem(@"x64\", "x64")]
+    [DeploymentItem(@"x86\", "x86")]
+    [DeploymentItem(@"SolidTestFiles\", "SolidTestFiles")]
     public class IfcModelBuilder
     {
         
@@ -37,6 +40,7 @@ namespace GeometryTests
 
                 var project = model.Instances.New<IfcProject>();
                 project.Initialize(ProjectUnits.SIUnitsUK);
+                model.ReloadModelFactors();
                 project.Name = "testProject";
                 project.OwnerHistory.OwningUser = model.DefaultOwningUser;
                 project.OwnerHistory.OwningApplication = model.DefaultOwningApplication;

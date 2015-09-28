@@ -5,9 +5,7 @@
 
 #include <IntPatch_RLine.jxx>
 
-#ifndef _Standard_Type_HeaderFile
 #include <Standard_Type.hxx>
-#endif
 
 
  
@@ -15,6 +13,7 @@
 
 IMPLEMENT_STANDARD_TYPE(IntPatch_RLine)
 IMPLEMENT_STANDARD_SUPERTYPE_ARRAY()
+  STANDARD_TYPE(IntPatch_PointLine),
   STANDARD_TYPE(IntPatch_Line),
   STANDARD_TYPE(MMgt_TShared),
   STANDARD_TYPE(Standard_Transient),

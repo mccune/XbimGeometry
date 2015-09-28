@@ -28,6 +28,14 @@
   #include <locale.h>
 #endif
 
+#if defined(_MSC_VER) || defined(__ANDROID__)
+  #include <malloc.h>
+#elif (defined(__GNUC__) && __GNUC__ >= 4 && __GNUC_MINOR__ >= 1)
+  #include <mm_malloc.h>
+#else
+  extern "C" int posix_memalign (void** thePtr, size_t theAlign, size_t theSize);
+#endif
+
 #ifndef OCCT_MMGT_OPT_DEFAULT
 #define OCCT_MMGT_OPT_DEFAULT 0
 #endif
@@ -38,12 +46,18 @@
 //           used to construct appropriate memory manager according
 //           to environment settings, and to ensure destruction upon exit
 //=======================================================================
-
-class Standard_MMgrFactory {
- public:
-  Standard_MMgrFactory();
+class Standard_MMgrFactory
+{
+public:
+  static Standard_MMgrRoot* GetMMgr();
   ~Standard_MMgrFactory();
- public:
+
+private:
+  Standard_MMgrFactory();
+  Standard_MMgrFactory (const Standard_MMgrFactory&);
+  Standard_MMgrFactory& operator= (const Standard_MMgrFactory&);
+
+private:
   Standard_MMgrRoot* myFMMgr;
 };
 
@@ -70,6 +84,38 @@ Standard_MMgrFactory::Standard_MMgrFactory()
   char* aVar;
   aVar = getenv ("MMGT_OPT");
   Standard_Integer anAllocId   = (aVar ?  atoi (aVar): OCCT_MMGT_OPT_DEFAULT);
+
+#if defined(_WIN32) && !defined(_WIN64)
+  static const DWORD _SSE2_FEATURE_BIT(0x04000000);
+  if ( anAllocId == 2 )
+  {
+    // CR25396: Check if SSE2 instructions are supported, if not then use MMgrRaw
+    // instead of MMgrTBBalloc. It is to avoid runtime crash when running on a 
+    // CPU that supports SSE but does not support SSE2 (some modifications of
+    // AMD Sempron).
+    DWORD volatile dwFeature;
+    _asm
+    {
+      push eax
+      push ebx
+      push ecx
+      push edx
+
+      // get the CPU feature bits
+      mov eax, 1
+      cpuid
+      mov dwFeature, edx
+
+      pop edx
+      pop ecx
+      pop ebx
+      pop eax
+    }
+    if ((dwFeature & _SSE2_FEATURE_BIT) == 0)
+      anAllocId = 0;
+  }
+#endif
+
   aVar = getenv ("MMGT_CLEAR");
   Standard_Boolean toClear     = (aVar ? (atoi (aVar) != 0) : Standard_True);
 
@@ -117,11 +163,8 @@ Standard_MMgrFactory::Standard_MMgrFactory()
 
 Standard_MMgrFactory::~Standard_MMgrFactory()
 {
-  if (  myFMMgr ) {
+  if (  myFMMgr )
     myFMMgr->Purge(Standard_True);
-//  delete myFMMgr;
-//  myFMMgr = 0;  
-  }
 }
 
 //=======================================================================
@@ -165,8 +208,7 @@ Standard_MMgrFactory::~Standard_MMgrFactory()
 // be counting calls to Allocate() and Free()...
 //
 //=======================================================================
-
-static Standard_MMgrRoot* GetMMgr()
+Standard_MMgrRoot* Standard_MMgrFactory::GetMMgr()
 {
   static Standard_MMgrFactory aFactory;
   return aFactory.myFMMgr;
@@ -179,17 +221,17 @@ static Standard_MMgrRoot* GetMMgr()
 
 Standard_Address Standard::Allocate(const Standard_Size size)
 {
-  return GetMMgr()->Allocate(size);
+  return Standard_MMgrFactory::GetMMgr()->Allocate(size);
 }
 
 //=======================================================================
-//function : FreeAddress
+//function : Free
 //purpose  : 
 //=======================================================================
 
 void Standard::Free (Standard_Address theStorage)
 {
-  GetMMgr()->Free(theStorage);
+  Standard_MMgrFactory::GetMMgr()->Free(theStorage);
 }
 
 //=======================================================================
@@ -200,7 +242,7 @@ void Standard::Free (Standard_Address theStorage)
 Standard_Address Standard::Reallocate (Standard_Address theStorage,
 				       const Standard_Size theSize)
 {
-  return GetMMgr()->Reallocate (theStorage, theSize);
+  return Standard_MMgrFactory::GetMMgr()->Reallocate (theStorage, theSize);
 }
 
 //=======================================================================
@@ -210,5 +252,47 @@ Standard_Address Standard::Reallocate (Standard_Address theStorage,
 
 Standard_Integer Standard::Purge()
 {
-  return GetMMgr()->Purge();
+  return Standard_MMgrFactory::GetMMgr()->Purge();
+}
+
+//=======================================================================
+//function : AllocateAligned
+//purpose  :
+//=======================================================================
+
+Standard_Address Standard::AllocateAligned (const Standard_Size theSize,
+                                            const Standard_Size theAlign)
+{
+#if defined(_MSC_VER)
+  return _aligned_malloc (theSize, theAlign);
+#elif defined(__ANDROID__)
+  return memalign (theAlign, theSize);
+#elif (defined(__GNUC__) && __GNUC__ >= 4 && __GNUC_MINOR__ >= 1)
+  return _mm_malloc (theSize, theAlign);
+#else
+  void* aPtr;
+  if (posix_memalign (&aPtr, theAlign, theSize))
+  {
+    return NULL;
+  }
+  return aPtr;
+#endif
+}
+
+//=======================================================================
+//function : FreeAligned
+//purpose  :
+//=======================================================================
+
+void Standard::FreeAligned (Standard_Address thePtrAligned)
+{
+#if defined(_MSC_VER)
+  _aligned_free (thePtrAligned);
+#elif defined(__ANDROID__)
+  free (thePtrAligned);
+#elif (defined(__GNUC__) && __GNUC__ >= 4 && __GNUC_MINOR__ >= 1)
+  _mm_free (thePtrAligned);
+#else
+  free (thePtrAligned);
+#endif
 }

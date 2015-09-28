@@ -23,21 +23,8 @@
 
 //---------- Systemes autres que WNT : ----------------------------------
 
-#ifdef HAVE_CONFIG_H
-# include <config.h>
-#endif
-
-#ifdef HAVE_SYS_TYPES_H
-# include <sys/types.h>
-#endif
-
-#ifdef HAVE_UNISTD_H
-# include <unistd.h>
-#endif
-
-#ifdef HAVE_SYS_TIMES_H
-# include <sys/times.h>
-#endif
+#include <sys/times.h>
+#include <unistd.h>
 
 #ifdef SOLARIS
 # include <sys/resource.h>
@@ -51,19 +38,13 @@
 # define _sysconf sysconf
 #endif
 
-#if defined(HAVE_TIME_H) || defined(WNT) || defined(DECOSF1)
+#if defined(DECOSF1)
 # include <time.h>
 #endif
 
 #  ifndef CLK_TCK
 #   define CLK_TCK	CLOCKS_PER_SEC
 #  endif
-
-#ifdef HAVE_LIMITS
-# include <limits>
-#elif defined (HAVE_LIMITS_H)
-# include <limits.h>
-#endif
 
 #if (defined(__APPLE__))
   #include <mach/task.h>
@@ -76,7 +57,7 @@
 //=======================================================================
 void OSD_Chronometer::GetProcessCPU (Standard_Real& UserSeconds, Standard_Real& SystemSeconds)
 {
-#if defined(LIN) || defined(linux) || defined(__FreeBSD__)
+#if defined(LIN) || defined(linux) || defined(__FreeBSD__) || defined(__ANDROID__)
   static const long aCLK_TCK = sysconf(_SC_CLK_TCK);
 #else
   static const long aCLK_TCK = CLK_TCK;
@@ -106,7 +87,7 @@ void OSD_Chronometer::GetThreadCPU (Standard_Real& theUserSeconds,
     theUserSeconds   = Standard_Real(aTaskInfo.user_time.seconds)   + 0.000001 * aTaskInfo.user_time.microseconds;
     theSystemSeconds = Standard_Real(aTaskInfo.system_time.seconds) + 0.000001 * aTaskInfo.system_time.microseconds;
   }
-#elif defined(_POSIX_TIMERS) && defined(_POSIX_THREAD_CPUTIME)
+#elif (defined(_POSIX_TIMERS) && defined(_POSIX_THREAD_CPUTIME)) || defined(__ANDROID__)
   // on Linux, only user times are available for threads via clock_gettime()
   struct timespec t;
   if (!clock_gettime (CLOCK_THREAD_CPUTIME_ID, &t))
@@ -190,10 +171,10 @@ OSD_Chronometer::OSD_Chronometer(const Standard_Boolean ThisThreadOnly)
 }
 
 //=======================================================================
-//function :  Destroy
-//purpose  :
+//function : ~OSD_Chronometer
+//purpose  : Destructor
 //=======================================================================
-void OSD_Chronometer::Destroy ()
+OSD_Chronometer::~OSD_Chronometer()
 {
 }
 
@@ -250,7 +231,7 @@ void OSD_Chronometer::Start ()
 //function : Show
 //purpose  :
 //=======================================================================
-void OSD_Chronometer::Show ()
+void OSD_Chronometer::Show() const
 {
   Show (cout);
 }
@@ -259,39 +240,69 @@ void OSD_Chronometer::Show ()
 //function : Show
 //purpose  :
 //=======================================================================
-void OSD_Chronometer::Show (Standard_OStream& os)
+void OSD_Chronometer::Show (Standard_OStream& os) const
 {
-  Standard_Boolean StopSav = Stopped;
-  if (!StopSav) Stop();
+  Standard_Real aCumulUserSec = Cumul_user;
+  Standard_Real aCumulSysSec  = Cumul_sys;
+  if (!Stopped)
+  {
+    Standard_Real aCurrUser, aCurrSys;
+    if (ThreadOnly)
+      GetThreadCPU  (aCurrUser, aCurrSys);
+    else
+      GetProcessCPU (aCurrUser, aCurrSys);
+
+    aCumulUserSec += aCurrUser - Start_user;
+    aCumulSysSec  += aCurrSys  - Start_sys;
+  }
+
   std::streamsize prec = os.precision (12);
-  os << "CPU user time: "   << Cumul_user  << " seconds " << endl;
-  os << "CPU system time: " << Cumul_sys   << " seconds " << endl;
+  os << "CPU user time: "   << aCumulUserSec << " seconds " << endl;
+  os << "CPU system time: " << aCumulSysSec  << " seconds " << endl;
   os.precision (prec);
-  if (!StopSav) Start();
 }
 
 //=======================================================================
 //function : Show
 //purpose  : Returns cpu user time
 //=======================================================================
-void OSD_Chronometer::Show (Standard_Real& second)
+void OSD_Chronometer::Show (Standard_Real& theUserSec) const
 {
-  Standard_Boolean StopSav = Stopped;
-  if (!StopSav) Stop();
-  second = Cumul_user;
-  if (!StopSav) Start();
+  theUserSec = Cumul_user;
+  if (Stopped)
+  {
+    return;
+  }
+
+  Standard_Real aCurrUser, aCurrSys;
+  if (ThreadOnly)
+    GetThreadCPU  (aCurrUser, aCurrSys);
+  else
+    GetProcessCPU (aCurrUser, aCurrSys);
+
+  theUserSec += aCurrUser - Start_user;
 }
+
 //=======================================================================
 //function : Show
 //purpose  : Returns both user and system cpu times
 //=======================================================================
-void OSD_Chronometer::Show (Standard_Real& user,
-                            Standard_Real& system)
+void OSD_Chronometer::Show (Standard_Real& theUserSec,
+                            Standard_Real& theSystemSec) const
 {
-  Standard_Boolean StopSav = Stopped;
-  if (!StopSav) Stop();
-  user = Cumul_user;
-  system = Cumul_sys;
-  if (!StopSav) Start();
-}
+  theUserSec   = Cumul_user;
+  theSystemSec = Cumul_sys;
+  if (Stopped)
+  {
+    return;
+  }
 
+  Standard_Real aCurrUser, aCurrSys;
+  if (ThreadOnly)
+    GetThreadCPU  (aCurrUser, aCurrSys);
+  else
+    GetProcessCPU (aCurrUser, aCurrSys);
+
+  theUserSec   += aCurrUser - Start_user;
+  theSystemSec += aCurrSys  - Start_sys;
+}

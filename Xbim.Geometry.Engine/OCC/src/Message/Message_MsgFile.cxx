@@ -15,25 +15,27 @@
 
 #include <Message_MsgFile.hxx>
 
+#include <NCollection_Buffer.hxx>
+#include <NCollection_DataMap.hxx>
+#include <OSD_Environment.hxx>
 #include <TCollection_AsciiString.hxx>
 #include <TCollection_ExtendedString.hxx>
-#include <NCollection_DefineBaseCollection.hxx>
-#include <NCollection_DefineDataMap.hxx>
-#include <OSD_Environment.hxx>
+#include <Standard_Mutex.hxx>
+#include <OSD_OpenFile.hxx>
+
 #include <stdlib.h>
 #include <stdio.h>
 
-DEFINE_BASECOLLECTION(Message_CollectionOfExtendedString, TCollection_ExtendedString)
-DEFINE_DATAMAP(Message_DataMapOfExtendedString,
-               Message_CollectionOfExtendedString,
-               TCollection_AsciiString,
-               TCollection_ExtendedString)
+typedef NCollection_DataMap<TCollection_AsciiString,TCollection_ExtendedString> Message_DataMapOfExtendedString;
 
 static Message_DataMapOfExtendedString& msgsDataMap ()
 {
   static Message_DataMapOfExtendedString aDataMap;
   return aDataMap;
 }
+
+// mutex used to prevent concurrent access to message registry
+static Standard_Mutex theMutex;
 
 typedef enum
 {
@@ -214,42 +216,36 @@ Standard_Boolean Message_MsgFile::LoadFile (const Standard_CString theFileName)
   if (theFileName == NULL || * theFileName == '\0') return Standard_False;
 
   //    Open the file
-  FILE *anMsgFile = fopen (theFileName, "rb");
-  if (!anMsgFile) return Standard_False;
+  FILE *anMsgFile = OSD_OpenFile(theFileName,"rb");
+  if (!anMsgFile)
+    return Standard_False;
 
-  //    Read the file into memory
-  class Buffer
-  {
-    // self-destructing buffer
-    char *myBuf;
-  public:
-    Buffer (Standard_Integer theSize) : myBuf(new char [theSize]) {}
-    ~Buffer () { delete [] myBuf; }
-    operator char* () const { return myBuf; }
-    char& operator [] (Standard_Integer theInd) { return myBuf[theInd]; }
-  };
-  Standard_Integer aFileSize = GetFileSize (anMsgFile);
-  if (aFileSize <= 0)
+  const Standard_Integer aFileSize = GetFileSize (anMsgFile);
+  NCollection_Buffer aBuffer(NCollection_BaseAllocator::CommonBaseAllocator());
+  if (aFileSize <= 0 || !aBuffer.Allocate(aFileSize + 2))
   {
     fclose (anMsgFile);
     return Standard_False;
   }
-  Buffer anMsgBuffer (aFileSize + 2);
-  Standard_Integer nbRead =
-    (Standard_Integer) fread (anMsgBuffer, 1, aFileSize, anMsgFile);
+
+  char* anMsgBuffer = reinterpret_cast<char*>(aBuffer.ChangeData());
+  const Standard_Integer nbRead =
+    static_cast<Standard_Integer>( fread(anMsgBuffer, 1, aFileSize, anMsgFile) );
+
   fclose (anMsgFile);
   if (nbRead != aFileSize)
     return Standard_False;
+
   anMsgBuffer[aFileSize] = 0;
-  anMsgBuffer[aFileSize+1] = 0;
+  anMsgBuffer[aFileSize + 1] = 0;
 
   // Read the messages in the file and append them to the global DataMap
   Standard_Boolean isLittleEndian = (anMsgBuffer[0] == '\xff' && anMsgBuffer[1] == '\xfe');
   Standard_Boolean isBigEndian    = (anMsgBuffer[0] == '\xfe' && anMsgBuffer[1] == '\xff');
   if ( isLittleEndian || isBigEndian )
   {
-    Standard_ExtCharacter * aUnicodeBuffer =
-      (Standard_ExtCharacter *) &anMsgBuffer[2];
+    Standard_ExtCharacter* aUnicodeBuffer =
+      reinterpret_cast<Standard_ExtCharacter*>(&anMsgBuffer[2]);
     // Convert Unicode representation to order adopted on current platform
 #if defined(__sparc) && defined(__sun)
     if ( isLittleEndian ) 
@@ -258,17 +254,19 @@ Standard_Boolean Message_MsgFile::LoadFile (const Standard_CString theFileName)
 #endif
     {
       // Reverse the bytes throughout the buffer
-      for (Standard_ExtCharacter * aPtr = aUnicodeBuffer;
-	   aPtr < (Standard_ExtCharacter *) &anMsgBuffer[aFileSize]; aPtr++)
+      const Standard_ExtCharacter* const anEnd =
+        reinterpret_cast<const Standard_ExtCharacter* const>(&anMsgBuffer[aFileSize]);
+
+      for (Standard_ExtCharacter* aPtr = aUnicodeBuffer; aPtr < anEnd; aPtr++)
       {
-	unsigned short aWord = *aPtr;
-	*aPtr = (aWord & 0x00ff) << 8 | (aWord & 0xff00) >> 8;
+        unsigned short aWord = *aPtr;
+        *aPtr = (aWord & 0x00ff) << 8 | (aWord & 0xff00) >> 8;
       }
     }
     return ::loadFile (aUnicodeBuffer);
   }
   else
-    return ::loadFile ((char*) anMsgBuffer);
+    return ::loadFile (anMsgBuffer);
 }
 
 //=======================================================================
@@ -314,8 +312,8 @@ Standard_Boolean Message_MsgFile::AddMsg (const TCollection_AsciiString& theKeyw
 					  const TCollection_ExtendedString&  theMessage)
 {
   Message_DataMapOfExtendedString& aDataMap = ::msgsDataMap();
-//  if (aDataMap.IsBound (theKeyword))
-//    return Standard_False;
+
+  Standard_Mutex::Sentry aSentry (theMutex);
   aDataMap.Bind (theKeyword, theMessage);
   return Standard_True;
 }
@@ -332,7 +330,18 @@ const TCollection_ExtendedString &Message_MsgFile::Msg (const Standard_CString t
 } 
 
 //=======================================================================
-//function : getMsg
+//function : HasMsg
+//purpose  : 
+//=======================================================================
+
+Standard_Boolean Message_MsgFile::HasMsg (const TCollection_AsciiString& theKeyword)
+{
+  Standard_Mutex::Sentry aSentry (theMutex);
+  return ::msgsDataMap().IsBound (theKeyword);
+}
+
+//=======================================================================
+//function : Msg
 //purpose  : retrieve the message previously defined for the given keyword
 //=======================================================================
 
@@ -340,23 +349,19 @@ const TCollection_ExtendedString &Message_MsgFile::Msg (const TCollection_AsciiS
 {
   // find message in the map
   Message_DataMapOfExtendedString& aDataMap = ::msgsDataMap();
-  if (aDataMap.IsBound (theKeyword))
-    return aDataMap.Find (theKeyword);
+  Standard_Mutex::Sentry aSentry (theMutex);
 
-  // if not found, generate error message
-  // to minimize risk of data races when running concurrently, set the static variables
-  // only if they are empty; this gives a possibility to enforce calling this method
-  // upfront to initialize these variables and only read access them afterwards. However
-  // theKeyword is no longer appended. aDefPrefix remained unchanged to not break some
-  // logs which might expect the previous value
-  static const TCollection_ExtendedString aDefPrefix ("Unknown message invoked with the keyword");
-  static const TCollection_AsciiString aPrefixCode ("Message_Msg_BadKeyword");
-  static TCollection_ExtendedString aFailureMessage;
-  if (aFailureMessage.Length() == 0) {
-     if (aDataMap.IsBound (aPrefixCode))
-       aFailureMessage = aDataMap.Find (aPrefixCode);
-     else
-       aFailureMessage = aDefPrefix;
+  // if message is not found, generate error message and add it to the map to minimize overhead
+  // on consequent calls with the same key
+  if (! aDataMap.IsBound(theKeyword))
+  {
+    // text of the error message can be itself defined in the map
+    static const TCollection_AsciiString aPrefixCode("Message_Msg_BadKeyword");
+    static const TCollection_ExtendedString aDefPrefix("Unknown message invoked with the keyword ");
+    TCollection_AsciiString aErrorMessage = (aDataMap.IsBound(aPrefixCode) ? aDataMap(aPrefixCode) : aDefPrefix);
+    aErrorMessage += theKeyword;
+    aDataMap.Bind (theKeyword, aErrorMessage); // do not use AddMsg() here to avoid mutex deadlock
   }
-  return aFailureMessage;
+
+  return aDataMap (theKeyword);
 }

@@ -5,6 +5,8 @@
 #include <TopTools_IndexedMapOfShape.hxx>
 #include <TopExp.hxx>
 #include <BRepTools.hxx>
+#include <BRep_Builder.hxx>
+#include <BRepAlgoAPI_Cut.hxx>
 using namespace System;
 using namespace Xbim::Common;
 namespace Xbim
@@ -90,7 +92,14 @@ namespace Xbim
 				//make sure any sewing has been performed
 				XbimCompound^ compound = dynamic_cast<XbimCompound^>(geomSet);
 				
-				if (compound != nullptr) compound->Sew();
+				if (compound != nullptr)
+					if (!compound->Sew())
+					{
+						_isSimplified = true; //set flag true to say the solid set has been simplified and the user should be warned
+#ifndef OCC_6_9_SUPPORTED						
+						return; //don't add it we cannot really make it into a solid and will cause boolean operation errors,
+#endif
+					}
 	
 				for each (IXbimGeometryObject^ geom in geomSet)
 				{
@@ -101,13 +110,17 @@ namespace Xbim
 					{
 						XbimShell^ shell = dynamic_cast<XbimShell^>(geom);
 						if (shell != nullptr)
-							/*if (shell->IsClosed) */solids->Add(shell->MakeSolid());
+						{							
+							XbimSolid^ s = (XbimSolid^)shell->MakeSolid();								
+							solids->Add(s);
+						}
 					}
 				}
 				return;
 			}
 			XbimShell^ shell = dynamic_cast<XbimShell^>(shape);
-			if (shell != nullptr && shell->IsClosed) return solids->Add(shell->MakeSolid());
+			if (shell != nullptr/* && shell->IsClosed*/)
+				return solids->Add(shell->MakeSolid());			
 		}
 		
 		IXbimSolid^ XbimSolidSet::First::get()
@@ -119,6 +132,16 @@ namespace Xbim
 		int XbimSolidSet::Count::get()
 		{
 			return solids==nullptr?0:solids->Count;
+		}
+
+		double XbimSolidSet::Volume::get()
+		{
+			double vol = 0;
+			for each (XbimSolid^ solid in solids)
+			{
+				vol += solid->Volume;
+			}
+			return vol;
 		}
 
 		IXbimGeometryObject^ XbimSolidSet::Transform(XbimMatrix3D matrix3D)
@@ -248,15 +271,95 @@ namespace Xbim
 
 #endif // USE_CARVE_CSG
 
-			XbimCompound^ thisSolid = XbimCompound::Merge(thisSolidSet, tolerance);
-			XbimCompound^ toCutSolid = XbimCompound::Merge(toCutSolidSet, tolerance);
+#ifdef OCC_6_9_SUPPORTED
+			
+			String^ err = "";
+			try
+			{
+				TopTools_ListOfShape shapeTools;
+				for each (IXbimSolid^ iSolid in solids)
+				{
+					XbimSolid^ solid = dynamic_cast<XbimSolid^>(iSolid);
+					if (solid!=nullptr)
+					{
+						shapeTools.Append(solid);
+					}
+				}
+				TopTools_ListOfShape shapeObjects;
+				for each (IXbimSolid^ iSolid in this)
+				{
+					XbimSolid^ solid = dynamic_cast<XbimSolid^>(iSolid);
+					if (solid != nullptr)
+					{
+						shapeObjects.Append(solid);
+					}
+				}
+				BRepAlgoAPI_Cut boolOp;
+				boolOp.SetArguments(shapeObjects);
+				boolOp.SetTools(shapeTools);
+				boolOp.SetFuzzyValue(tolerance);
+				boolOp.Build();
+				//BRepTools::Write(boolOp.Shape(), "d:\\s");
+				if (boolOp.ErrorStatus() == 0)
+					return gcnew XbimSolidSet(boolOp.Shape());
+				err = "Error = " + boolOp.ErrorStatus();
+			}
+			catch (Standard_Failure e)
+			{
+				err = gcnew String(Standard_Failure::Caught()->GetMessageString());
+			}
+			XbimGeometryCreator::logger->WarnFormat("WS032: Boolean Cut operation failed. " + err);
+			return XbimSolidSet::Empty;
+#else
 
+			if (thisSolidSet->Count >_maxOpeningsToCut) //if the base shape is really complicate just give up trying
+			{
+				IsSimplified = true;
+				return this;
+			}
+			XbimCompound^ thisSolid = XbimCompound::Merge(thisSolidSet, tolerance);
+			
+			XbimCompound^ toCutSolid;
 			if (thisSolid == nullptr) return XbimSolidSet::Empty;
+			bool isSimplified = false;
+			if (toCutSolidSet->Count > _maxOpeningsToCut)
+			{
+				isSimplified = true;
+				List<Tuple<double, XbimSolid^>^>^ solidsList = gcnew List<Tuple<double, XbimSolid^>^>(toCutSolidSet->Count);
+				for each (XbimSolid^ solid in toCutSolidSet)
+				{
+					solidsList->Add(gcnew Tuple<double, XbimSolid^>(solid->Volume, solid));
+				}
+				solidsList->Sort(_volumeComparer);
+				TopoDS_Compound subsetToCut;
+				BRep_Builder b;
+				b.MakeCompound(subsetToCut);
+				//int i = 0;
+				double totalVolume = this->Volume;
+				double minVolume = totalVolume * _maxOpeningVolumePercentage;
+
+				for (int i = 0; i < _maxOpeningsToCut; i++)
+				{
+					if (solidsList[i]->Item1 < minVolume) break; //give up for small things
+					b.Add(subsetToCut, solidsList[i]->Item2);
+				}
+				
+				toCutSolid = gcnew XbimCompound(subsetToCut,true, tolerance);
+				
+			}
+			else
+			{
+				toCutSolid = XbimCompound::Merge(toCutSolidSet, tolerance);
+			}
+
 			if (toCutSolid == nullptr) return this;
 			XbimCompound^ result = thisSolid->Cut(toCutSolid, tolerance);
 			XbimSolidSet^ ss = gcnew XbimSolidSet(result);
+			//BRepTools::Write(result, "d:\\c");
 			GC::KeepAlive(result);
+			ss->IsSimplified = isSimplified;
 			return ss;
+#endif
 		}
 
 		IXbimSolidSet^ XbimSolidSet::Union(IXbimSolidSet^ solids, double tolerance)
@@ -357,6 +460,8 @@ namespace Xbim
 			if (toUnionSolid != nullptr) return solids;
 			return this;
 		}
+
+		
 
 		IXbimSolidSet^ XbimSolidSet::Intersection(IXbimSolidSet^ solids, double tolerance)
 		{

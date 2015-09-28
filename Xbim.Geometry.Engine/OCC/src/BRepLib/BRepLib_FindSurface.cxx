@@ -19,7 +19,7 @@
 #include <Precision.hxx>
 #include <math_Matrix.hxx>
 #include <math_Vector.hxx>
-#include <math_Gauss.hxx>
+#include <math_Jacobi.hxx>
 
 #include <gp_Lin.hxx>
 #include <gp_Circ.hxx>
@@ -45,6 +45,8 @@
 #include <TopoDS_Vertex.hxx>
 #include <TopoDS_Wire.hxx>
 #include <TopoDS.hxx>
+#include <BRep_Builder.hxx>
+#include <BRepTopAdaptor_FClass2d.hxx>
 
 #include <GeomLib.hxx>
 #include <Geom2d_Curve.hxx>
@@ -175,8 +177,8 @@ BRepLib_FindSurface::BRepLib_FindSurface(const TopoDS_Shape&    S,
 //purpose  : 
 //=======================================================================
 void BRepLib_FindSurface::Init(const TopoDS_Shape&    S, 
-			       const Standard_Real    Tol,
-			       const Standard_Boolean OnlyPlane,
+			                         const Standard_Real    Tol,
+			                         const Standard_Boolean OnlyPlane,
                                const Standard_Boolean OnlyClosed)
 {
   myTolerance = Tol;
@@ -214,24 +216,24 @@ void BRepLib_FindSurface::Init(const TopoDS_Shape&    S,
     // check the other edges
     for (ex.Init(S,TopAbs_EDGE); ex.More(); ex.Next()) {
       if (!E.IsSame(ex.Current())) {
-	j = 0;
-	for(;;) {
-	  j++;
-	  BRep_Tool::CurveOnSurface(TopoDS::Edge(ex.Current()),
-				    PPC,SS,L,ff,ll,j);
-	  if (SS.IsNull()) {
-	    break;
-	  }
-	  if (SS == mySurface) {
-	    break;
-	  }
-	  SS.Nullify();
-	}
+        j = 0;
+        for(;;) {
+          j++;
+          BRep_Tool::CurveOnSurface(TopoDS::Edge(ex.Current()),
+            PPC,SS,L,ff,ll,j);
+          if (SS.IsNull()) {
+            break;
+          }
+          if (SS == mySurface) {
+            break;
+          }
+          SS.Nullify();
+        }
 
-	if (SS.IsNull()) {
-	  mySurface.Nullify();
-	  break;
-	}
+        if (SS.IsNull()) {
+          mySurface.Nullify();
+          break;
+        }
       }
     }
 
@@ -262,7 +264,7 @@ void BRepLib_FindSurface::Init(const TopoDS_Shape&    S,
   //                       distances from neighboring points (_only_ same edge)
   //                    2. Minimizing the weighed sum of squared deviations
   //                       compute coefficients of the sought plane.
-  
+
   TColgp_SequenceOfPnt aPoints;
   TColStd_SequenceOfReal aWeight;
 
@@ -284,64 +286,72 @@ void BRepLib_FindSurface::Init(const TopoDS_Shape&    S,
     {
     case GeomAbs_BezierCurve:
       {
-	// Put all poles for bezier
-	Handle(Geom_BezierCurve) GC = c.Bezier();
-	Standard_Integer iNbPol = GC->NbPoles();
-	if ( iNbPol < 2)
-	  // Degenerate
-	  continue;
-	else
-	{
-	  Handle(TColgp_HArray1OfPnt) aPoles = new (TColgp_HArray1OfPnt) (1, iNbPol);
-	  GC->Poles(aPoles->ChangeArray1());
-	  gp_Pnt aPolePrev = aPoles->Value(1), aPoleNext;
-	  Standard_Real dfDistPrev = 0., dfDistNext;
-	  for (Standard_Integer iPol=1; iPol<=iNbPol; iPol++)
-	  {
-	    if (iPol<iNbPol)
-	    {
-	      aPoleNext = aPoles->Value(iPol+1);
-	      dfDistNext = aPolePrev.Distance(aPoleNext);
-	    }
-	    else
-	      dfDistNext = 0.;
-	    aPoints.Append (aPolePrev);
-	    aWeight.Append (dfDistPrev+dfDistNext);
-	    dfDistPrev = dfDistNext;
-	    aPolePrev = aPoleNext;
-	  }
-	}
+        // Put all poles for bezier
+        Handle(Geom_BezierCurve) GC = c.Bezier();
+        Standard_Integer iNbPol = GC->NbPoles();
+        Standard_Real tf = GC->FirstParameter();
+        Standard_Real tl = GC->LastParameter();
+        Standard_Real r =  (dfUl - dfUf) / (tl - tf);
+        r *= iNbPol;
+        if ( iNbPol < 2 || r < 1.)
+          // Degenerate
+          continue;
+        else
+        {
+          Handle(TColgp_HArray1OfPnt) aPoles = new (TColgp_HArray1OfPnt) (1, iNbPol);
+          GC->Poles(aPoles->ChangeArray1());
+          gp_Pnt aPolePrev = aPoles->Value(1), aPoleNext;
+          Standard_Real dfDistPrev = 0., dfDistNext;
+          for (Standard_Integer iPol=1; iPol<=iNbPol; iPol++)
+          {
+            if (iPol<iNbPol)
+            {
+              aPoleNext = aPoles->Value(iPol+1);
+              dfDistNext = aPolePrev.Distance(aPoleNext);
+            }
+            else
+              dfDistNext = 0.;
+            aPoints.Append (aPolePrev);
+            aWeight.Append (dfDistPrev+dfDistNext);
+            dfDistPrev = dfDistNext;
+            aPolePrev = aPoleNext;
+          }
+        }
       }
       break;
     case GeomAbs_BSplineCurve:
       {
-	// Put all poles for bspline
-	Handle(Geom_BSplineCurve) GC = c.BSpline();
-	Standard_Integer iNbPol = GC->NbPoles();
-	if ( iNbPol < 2)
-	  // Degenerate
-	  continue;
-	else
-	{
-	  Handle(TColgp_HArray1OfPnt) aPoles = new (TColgp_HArray1OfPnt) (1, iNbPol);
-	  GC->Poles(aPoles->ChangeArray1());
-	  gp_Pnt aPolePrev = aPoles->Value(1), aPoleNext;
-	  Standard_Real dfDistPrev = 0., dfDistNext;
-	  for (Standard_Integer iPol=1; iPol<=iNbPol; iPol++)
-	  {
-	    if (iPol<iNbPol)
-	    {
-	      aPoleNext = aPoles->Value(iPol+1);
-	      dfDistNext = aPolePrev.Distance(aPoleNext);
-	    }
-	    else
-	      dfDistNext = 0.;
-	    aPoints.Append (aPolePrev);
-	    aWeight.Append (dfDistPrev+dfDistNext);
-	    dfDistPrev = dfDistNext;
-	    aPolePrev = aPoleNext;
-	  }
-	}
+        // Put all poles for bspline
+        Handle(Geom_BSplineCurve) GC = c.BSpline();
+        Standard_Integer iNbPol = GC->NbPoles();
+        Standard_Real tf = GC->FirstParameter();
+        Standard_Real tl = GC->LastParameter();
+        Standard_Real r =  (dfUl - dfUf) / (tl - tf);
+        r *= iNbPol;
+        if ( iNbPol < 2 || r < 1.)
+          // Degenerate
+          continue;
+        else
+        {
+          Handle(TColgp_HArray1OfPnt) aPoles = new (TColgp_HArray1OfPnt) (1, iNbPol);
+          GC->Poles(aPoles->ChangeArray1());
+          gp_Pnt aPolePrev = aPoles->Value(1), aPoleNext;
+          Standard_Real dfDistPrev = 0., dfDistNext;
+          for (Standard_Integer iPol=1; iPol<=iNbPol; iPol++)
+          {
+            if (iPol<iNbPol)
+            {
+              aPoleNext = aPoles->Value(iPol+1);
+              dfDistNext = aPolePrev.Distance(aPoleNext);
+            }
+            else
+              dfDistNext = 0.;
+            aPoints.Append (aPolePrev);
+            aWeight.Append (dfDistPrev+dfDistNext);
+            dfDistPrev = dfDistNext;
+            aPolePrev = aPoleNext;
+          }
+        }
       }
       break;
 
@@ -351,41 +361,41 @@ void BRepLib_FindSurface::Init(const TopoDS_Shape&    S,
     case GeomAbs_Hyperbola:
     case GeomAbs_Parabola:
       if (c.GetType() == GeomAbs_Line)
-	// Two points on straight segment
-	iNbPoints=2;
+        // Two points on straight segment
+        iNbPoints=2;
       else
-	// Four points on otheranalitical curves
-	iNbPoints=4;
+        // Four points on otheranalitical curves
+        iNbPoints=4;
     default:
       { 
-	// Put some points on other curves
-	if (iNbPoints==0)
-	  iNbPoints = 15 + c.NbIntervals(GeomAbs_C3);
-	Standard_Real dfDelta = (dfUl-dfUf)/(iNbPoints-1);
-	Standard_Integer iPoint;
-	Standard_Real dfU;
-	gp_Pnt aPointPrev = c.Value(dfUf), aPointNext;
-	Standard_Real dfDistPrev = 0., dfDistNext;
-	for (iPoint=1, dfU=dfUf+dfDelta; 
-	     iPoint<=iNbPoints; 
-	     iPoint++, dfU+=dfDelta) 
-	{
-	  if (iPoint<iNbPoints)
-	  {
-	    aPointNext = c.Value(dfU);
-	    dfDistNext = aPointPrev.Distance(aPointNext);
-	  }
-	  else
-	    dfDistNext = 0.;
-	  aPoints.Append (aPointPrev);
-	  aWeight.Append (dfDistPrev+dfDistNext);
-	  dfDistPrev = dfDistNext;
-	  aPointPrev = aPointNext;
-	}
+        // Put some points on other curves
+        if (iNbPoints==0)
+          iNbPoints = 15 + c.NbIntervals(GeomAbs_C3);
+        Standard_Real dfDelta = (dfUl-dfUf)/(iNbPoints-1);
+        Standard_Integer iPoint;
+        Standard_Real dfU;
+        gp_Pnt aPointPrev = c.Value(dfUf), aPointNext;
+        Standard_Real dfDistPrev = 0., dfDistNext;
+        for (iPoint=1, dfU=dfUf+dfDelta; 
+          iPoint<=iNbPoints; 
+          iPoint++, dfU+=dfDelta) 
+        {
+          if (iPoint<iNbPoints)
+          {
+            aPointNext = c.Value(dfU);
+            dfDistNext = aPointPrev.Distance(aPointNext);
+          }
+          else
+            dfDistNext = 0.;
+          aPoints.Append (aPointPrev);
+          aWeight.Append (dfDistPrev+dfDistNext);
+          dfDistPrev = dfDistNext;
+          aPointPrev = aPointNext;
+        }
       } // default:
     } // switch (c.GetType()) ...
   } // for (ex.Init(S,TopAbs_EDGE); ex.More() && control; ex.Next()) ...
-  
+
   if (aPoints.Length() < 3) {
     return;
   }
@@ -414,36 +424,100 @@ void BRepLib_FindSurface::Init(const TopoDS_Shape&    S,
     gp_XYZ p=aPoints(iPoint).XYZ()-aBaryCenter;
     Standard_Real w=aWeight(iPoint)/dfMaxWeight;
     aMat(1,1)+=w*p.X()*p.X(); 
-        aMat(1,2)+=w*p.X()*p.Y(); 
-            aMat(1,3)+=w*p.X()*p.Z();
-    aMat(2,1)+=w*p.Y()*p.X();  
-        aMat(2,2)+=w*p.Y()*p.Y();  
-            aMat(2,3)+=w*p.Y()*p.Z();
-    aMat(3,1)+=w*p.Z()*p.X();  
-        aMat(3,2)+=w*p.Z()*p.Y(); 
-            aMat(3,3)+=w*p.Z()*p.Z();
-    aVec(1) -= w*p.X();
-    aVec(2) -= w*p.Y();
-    aVec(3) -= w*p.Z();
+    aMat(1,2)+=w*p.X()*p.Y(); 
+    aMat(1,3)+=w*p.X()*p.Z();
+    //  
+    aMat(2,2)+=w*p.Y()*p.Y();  
+    aMat(2,3)+=w*p.Y()*p.Z();
+    //  
+    aMat(3,3)+=w*p.Z()*p.Z();
   }
-
-  // Solve the system of equations to get plane coefficients
-  math_Gauss aSolver(aMat);
-  Standard_Boolean isSolved = aSolver.IsDone();
+  aMat(2,1) = aMat(1,2);
+  aMat(3,1) = aMat(1,3);
+  aMat(3,2) = aMat(2,3);
+  //
+  math_Jacobi anEignval(aMat);
+  math_Vector anEVals(1,3);
+  Standard_Boolean isSolved = anEignval.IsDone();
+  Standard_Integer isol = 0;
+  if(isSolved)
+  {
+    anEVals = anEignval.Values();
+    //We need vector with eigenvalue ~ 0.
+    Standard_Real anEMin = RealLast();
+    Standard_Real anEMax = -anEMin;
+    for(i = 1; i <= 3; ++i)
+    {
+      Standard_Real anE = Abs(anEVals(i));
+      if(anEMin > anE)
+      {
+        anEMin = anE;
+        isol = i;
+      }
+      if(anEMax < anE)
+      {
+        anEMax = anE;
+      }
+    }
+    
+    if(isol == 0)
+    {
+      isSolved = Standard_False;
+    }
+    else
+    {
+      Standard_Real eps = Epsilon(anEMax);
+      if(anEMin <= eps)
+      {
+        anEignval.Vector(isol, aVec);
+      }
+      else
+      {
+        //try using vector product of other axes
+        Standard_Integer ind[2] = {0,0};
+        for(i = 1; i <= 3; ++i)
+        {
+          if(i == isol)
+          {
+            continue;
+          }
+          if(ind[0] == 0)
+          {
+            ind[0] = i;
+            continue;
+          }
+          if(ind[1] == 0)
+          {
+            ind[1] = i;
+            continue;
+          }
+        }
+        math_Vector aVec1(1, 3, 0.), aVec2(1, 3, 0.);
+        anEignval.Vector(ind[0], aVec1);
+        anEignval.Vector(ind[1], aVec2);
+        gp_Vec aV1(aVec1(1), aVec1(2), aVec1(3));
+        gp_Vec aV2(aVec2(1), aVec2(2), aVec2(3));
+        gp_Vec aN = aV1^ aV2;
+        aVec(1) = aN.X();
+        aVec(2) = aN.Y();
+        aVec(3) = aN.Z();
+      }
+      if (aVec.Norm2() < gp::Resolution()) {
+        isSolved = Standard_False;
+      }
+    }
+  }
+    
   //
   //  let us be more tolerant (occ415)
   Standard_Real dfDist = RealLast();
   Handle(Geom_Plane) aPlane;
   //
   if (isSolved)  {
-    aSolver.Solve(aVec);
-    if (aVec.Norm2()<gp::Resolution()) {
-      isSolved = Standard_False;
-    }
-  }
-  //
-  if (isSolved)  {
-    aPlane = new Geom_Plane(aBaryCenter,gp_Dir(aVec(1),aVec(2),aVec(3)));
+    //Plane normal can have two directions, direction is chosen
+    //according to direction of eigenvector
+    gp_Vec anN(aVec(1), aVec(2), aVec(3));
+    aPlane = new Geom_Plane(aBaryCenter,anN);
     dfDist = Controle (aPoints, aPlane);
   }
   //
@@ -453,23 +527,25 @@ void BRepLib_FindSurface::Init(const TopoDS_Shape&    S,
       gp_Vec aDir(aFirstPnt,aPoints(iPoint));
       Standard_Real dfSide=aDir.Magnitude();
       if (dfSide<myTolerance) {
-	continue; // degeneration
+        continue; // degeneration
       }
       for (Standard_Integer iP1=iPoint+1; iP1<=aPoints.Length(); iP1++) {
-	gp_Vec aCross = gp_Vec(aFirstPnt,aPoints(iP1)) ^ aDir ;
-	if (aCross.Magnitude() > dfSide*myTolerance) {
-	  Handle(Geom_Plane) aPlane2 = new Geom_Plane(aFirstPnt, aCross);
-	  Standard_Real dfDist2 = Controle (aPoints, aPlane2);
-	  if (dfDist2 < myTolerance)  {
-	    myTolReached = dfDist2;
-	    mySurface = aPlane2;
-	    return;
-	  }
-	  if (dfDist2 < dfDist)  {
-	    dfDist = dfDist2;
-	    aPlane = aPlane2;
-	  }
-	}
+
+       	gp_Vec aCross = gp_Vec(aFirstPnt,aPoints(iP1)) ^ aDir ;
+
+        if (aCross.Magnitude() > dfSide*myTolerance) {
+          Handle(Geom_Plane) aPlane2 = new Geom_Plane(aBaryCenter, aCross);
+          Standard_Real dfDist2 = Controle (aPoints, aPlane2);
+          if (dfDist2 < myTolerance)  {
+            myTolReached = dfDist2;
+            mySurface = aPlane2;
+            return;
+          }
+          if (dfDist2 < dfDist)  {
+            dfDist = dfDist2;
+            aPlane = aPlane2;
+          }
+        }
       }
     }
   }
@@ -483,6 +559,23 @@ void BRepLib_FindSurface::Init(const TopoDS_Shape&    S,
     //myTolReached = dfDist;
     //XXt
     mySurface = aPlane;
+    //If S is wire, try to orient surface according to orientation of wire.
+    if(S.ShapeType() == TopAbs_WIRE && S.Closed())
+    {
+       //
+      TopoDS_Wire aW = TopoDS::Wire(S);
+      TopoDS_Face aTmpFace = BRepLib_MakeFace(mySurface, Precision::Confusion());
+      BRep_Builder BB;
+      BB.Add(aTmpFace, aW);
+      BRepTopAdaptor_FClass2d FClass(aTmpFace, 0.);
+      if ( FClass.PerformInfinitePoint() == TopAbs_IN ) 
+      {
+        gp_Dir aN = aPlane->Position().Direction();
+        aN.Reverse();
+        mySurface = new Geom_Plane(aPlane->Position().Location(), aN);
+      }
+
+    }
   }
   //XXf
   myTolReached = dfDist;

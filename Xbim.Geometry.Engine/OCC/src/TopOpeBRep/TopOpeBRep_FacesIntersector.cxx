@@ -38,7 +38,7 @@
 
 Standard_EXPORT Standard_Real GLOBAL_tolFF = 1.e-7;
 
-#ifdef DEB
+#ifdef OCCT_DEBUG
 #include <TopAbs.hxx>
 extern Standard_Boolean TopOpeBRep_GettraceFI();
 extern Standard_Boolean TopOpeBRep_GettraceFITOL();
@@ -167,7 +167,7 @@ TopOpeBRep_FacesIntersector::TopOpeBRep_FacesIntersector ()
 void TopOpeBRep_FacesIntersector::Perform(const TopoDS_Shape& F1,const TopoDS_Shape& F2,
 					  const Bnd_Box& B1,const Bnd_Box& B2)
 {
-#ifdef DEB
+#ifdef OCCT_DEBUG
   if (TopOpeBRep_GettraceSAVFF()) SAVFF(TopoDS::Face(F1),TopoDS::Face(F2));
 #endif
   
@@ -183,7 +183,7 @@ void TopOpeBRep_FacesIntersector::Perform(const TopoDS_Shape& F1,const TopoDS_Sh
   myDomain1->Initialize(mySurface1);
   myDomain2->Initialize(mySurface2);
 
-#ifdef DEB
+#ifdef OCCT_DEBUG
   if (TopOpeBRepTool_GettraceKRO()) KRO_DSFILLER_INTFF.Start();
 #endif
 
@@ -199,7 +199,7 @@ void TopOpeBRep_FacesIntersector::Perform(const TopoDS_Shape& F1,const TopoDS_Sh
   Standard_Real tol2 = myTol2;
   GLOBAL_tolFF = Max(tol1,tol2);
 
-#ifdef DEB
+#ifdef OCCT_DEBUG
   if (TopOpeBRep_GettraceFITOL()) {
     cout<<"FacesIntersector : Perform tol1 = "<<tol1<<endl;
     cout<<"                           tol2 = "<<tol2<<endl;
@@ -208,9 +208,10 @@ void TopOpeBRep_FacesIntersector::Perform(const TopoDS_Shape& F1,const TopoDS_Sh
 #endif
 
   myIntersector.SetTolerances(myTol1,myTol2,MaxUV,Deflection); 
-  myIntersector.Perform(mySurface1,myDomain1,mySurface2,myDomain2,myTol1,myTol2);
+  myIntersector.Perform(mySurface1,myDomain1,mySurface2,myDomain2,
+                        myTol1,myTol2,Standard_True,Standard_True);
 
-#ifdef DEB
+#ifdef OCCT_DEBUG
   if (TopOpeBRepTool_GettraceKRO()) KRO_DSFILLER_INTFF.Stop();
 #endif
 
@@ -235,7 +236,7 @@ void TopOpeBRep_FacesIntersector::Perform(const TopoDS_Shape& F1,const TopoDS_Sh
     }
   }
   
-#ifdef DEB
+#ifdef OCCT_DEBUG
   if (TopOpeBRep_GettraceFI()) cout<<"Perform : isempty "<<IsEmpty()<<endl;
 #endif
 }
@@ -585,7 +586,7 @@ void TopOpeBRep_FacesIntersector::ForceTolerances(const Standard_Real Tol1,
   myTol1 = Tol1;
   myTol2 = Tol2;  
   myForceTolerances = Standard_True;
-#ifdef DEB
+#ifdef OCCT_DEBUG
   if (TopOpeBRep_GettraceFITOL())
     cout<<"ForceTolerances : myTol1,myTol2 = "<<myTol1<<","<<myTol2<<endl;
 #endif
@@ -608,7 +609,7 @@ void TopOpeBRep_FacesIntersector::GetTolerances(Standard_Real& Tol1,
 //purpose  : (private)
 //=======================================================================
 
-#ifdef DEB
+#ifdef OCCT_DEBUG
 void TopOpeBRep_FacesIntersector::ShapeTolerances(const TopoDS_Shape& S1,
 						  const TopoDS_Shape& S2)
 #else
@@ -620,7 +621,7 @@ void TopOpeBRep_FacesIntersector::ShapeTolerances(const TopoDS_Shape& ,
   myTol1 = Precision::Confusion();
   myTol2 = myTol1;  
   myForceTolerances = Standard_False;
-#ifdef DEB
+#ifdef OCCT_DEBUG
   if (TopOpeBRep_GettraceFITOL()) {
     cout<<"ShapeTolerances on S1 = ";TopAbs::Print(S1.ShapeType(),cout);
     cout<<" S2 = ";TopAbs::Print(S2.ShapeType(),cout);
@@ -1167,38 +1168,25 @@ static void MergeWLinesIfAllSegmentsAlongRestriction(IntPatch_SequenceOfLine&   
   Standard_Real Fp = 0., Lp = 0.;
 
 
-  if( WLineRank == 1 )
-    {
-      Handle(IntSurf_LineOn2S) aLineOn2S = new IntSurf_LineOn2S();
-      Standard_Integer arcnumber = GetArc(theSlin,WLineRank,theSurface1,theDomain1,theSurface2,testPoint,TolVrtx,aLineOn2S,Fp,Lp);
-
-      if( arcnumber == 0 )
-	return;
-     
-      Handle(IntPatch_WLine) anWLine = NULL;
-      anWLine = GetMergedWLineOnRestriction(theSlin,TolVrtx,aLineOn2S);
+  Handle(IntSurf_LineOn2S) aLineOn2S = new IntSurf_LineOn2S();
+  //
+  Standard_Integer arcnumber = (WLineRank == 1) ?
+      GetArc(theSlin,WLineRank,theSurface1,theDomain1,theSurface2,testPoint,TolVrtx,aLineOn2S,Fp,Lp) :
+      GetArc(theSlin,WLineRank,theSurface2,theDomain2,theSurface1,testPoint,TolVrtx,aLineOn2S,Fp,Lp);
+  //    
+  if (arcnumber == 0) {
+    return;
+  }
+  //
+  Handle(IntPatch_WLine) anWLine = GetMergedWLineOnRestriction(theSlin,TolVrtx,aLineOn2S);
+  if (!anWLine.IsNull()) {
+    theSlin.Clear();
+    theSlin.Append(anWLine);
 #ifdef DEB
-	  cout << "*** TopOpeBRep_FaceIntersector: Merge WLines on Restriction S1 to WLine ***" << endl;
+    cout << "*** TopOpeBRep_FaceIntersector: Merge WLines on Restriction " 
+         << ((WLineRank == 1) ? "S1" : "S2") << " to WLine***" << endl;
 #endif
-      theSlin.Clear();
-      theSlin.Append(anWLine);
-    }
-  else
-    {
-      Handle(IntSurf_LineOn2S) aLineOn2S = new IntSurf_LineOn2S();
-      Standard_Integer arcnumber = GetArc(theSlin,WLineRank,theSurface2,theDomain2,theSurface1,testPoint,TolVrtx,aLineOn2S,Fp,Lp);
-      
-      if( arcnumber == 0 )
-	return;
-
-      Handle(IntPatch_WLine) anWLine = NULL;
-      anWLine = GetMergedWLineOnRestriction(theSlin,TolVrtx,aLineOn2S);
-#ifdef DEB
-	  cout << "*** TopOpeBRep_FaceIntersector: Merge WLines on Restriction S2 to WLine***" << endl;
-#endif
-      theSlin.Clear();
-      theSlin.Append(anWLine);
-    }
+  }
 }
 
 //=========================================================================================
@@ -1498,6 +1486,11 @@ static Handle(IntPatch_WLine) GetMergedWLineOnRestriction(IntPatch_SequenceOfLin
 									   const Standard_Real&               theVrtxTol,
 									   const Handle(IntSurf_LineOn2S)&    theLineOn2S)
 {
+  Handle(IntPatch_WLine) mWLine;
+  if (theLineOn2S->NbPoints() == 0) {
+    return mWLine;
+  }
+  //
   IntSurf_TypeTrans trans1 = IntSurf_Undecided;
   IntSurf_TypeTrans trans2 = IntSurf_Undecided;
   Standard_Integer i = 0;
@@ -1515,7 +1508,7 @@ static Handle(IntPatch_WLine) GetMergedWLineOnRestriction(IntPatch_SequenceOfLin
 	trans2 = aWLine->TransitionOnS2();
     }
 
-  Handle(IntPatch_WLine) mWLine = new IntPatch_WLine(theLineOn2S, Standard_False, trans1, trans2);
+  mWLine = new IntPatch_WLine(theLineOn2S, Standard_False, trans1, trans2);
 
   Standard_Integer NbPnts = mWLine->NbPnts();
   IntPatch_Point aFirstVertex, aLastVertex;

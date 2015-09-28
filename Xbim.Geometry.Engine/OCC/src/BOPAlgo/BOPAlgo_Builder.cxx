@@ -17,13 +17,16 @@
 
 #include <BOPAlgo_Builder.ixx>
 
+#include <Standard_ErrorHandler.hxx>
+#include <Standard_Failure.hxx>
+
 #include <NCollection_IncAllocator.hxx>
 
 #include <TopoDS_Compound.hxx>
 #include <BRep_Builder.hxx>
 
-
 #include <BOPTools_AlgoTools.hxx>
+#include <TopTools_ListIteratorOfListOfShape.hxx>
 
 //=======================================================================
 //function : 
@@ -40,7 +43,8 @@ BOPAlgo_Builder::BOPAlgo_Builder()
   myImages(100, myAllocator),
   myShapesSD(100, myAllocator),
   mySplits(100, myAllocator),
-  myOrigins(100, myAllocator)
+  myOrigins(100, myAllocator),
+  myFuzzyValue(0.)
 {
 }
 //=======================================================================
@@ -59,7 +63,8 @@ BOPAlgo_Builder::BOPAlgo_Builder
   myImages(100, myAllocator), 
   myShapesSD(100, myAllocator),
   mySplits(100, myAllocator),
-  myOrigins(100, myAllocator)
+  myOrigins(100, myAllocator),
+  myFuzzyValue(0.)
 {
 }
 //=======================================================================
@@ -96,6 +101,38 @@ void BOPAlgo_Builder::AddArgument(const TopoDS_Shape& theShape)
 {
   if (myMapFence.Add(theShape)) {
     myArguments.Append(theShape);
+  }
+}
+//=======================================================================
+//function : SetArguments
+//purpose  : 
+//=======================================================================
+void BOPAlgo_Builder::SetArguments(const TopTools_ListOfShape& theShapes)
+{
+  TopTools_ListIteratorOfListOfShape aIt;
+  //
+  myArguments.Clear();
+  //
+  aIt.Initialize(theShapes);
+  for (; aIt.More(); aIt.Next()) {
+    const TopoDS_Shape& aS = aIt.Value();
+    AddArgument(aS);
+  }
+}
+//=======================================================================
+//function : SetArguments
+//purpose  : 
+//=======================================================================
+void BOPAlgo_Builder::SetArguments(const BOPCol_ListOfShape& theShapes)
+{
+  BOPCol_ListIteratorOfListOfShape aIt;
+  //
+  myArguments.Clear();
+  //
+  aIt.Initialize(theShapes);
+  for (; aIt.More(); aIt.Next()) {
+    const TopoDS_Shape& aS = aIt.Value();
+    AddArgument(aS);
   }
 }
 //=======================================================================
@@ -154,6 +191,22 @@ BOPAlgo_PPaveFiller BOPAlgo_Builder::PPaveFiller()
 BOPDS_PDS BOPAlgo_Builder::PDS()
 {
   return myDS;
+}
+//=======================================================================
+//function : SetFuzzyValue
+//purpose  : 
+//=======================================================================
+void BOPAlgo_Builder::SetFuzzyValue(const Standard_Real theFuzz)
+{
+  myFuzzyValue = (theFuzz < 0.) ? 0. : theFuzz;
+}
+//=======================================================================
+//function : FuzzyValue
+//purpose  : 
+//=======================================================================
+Standard_Real BOPAlgo_Builder::FuzzyValue() const
+{
+  return myFuzzyValue;
 }
 //=======================================================================
 // function: CheckData
@@ -219,6 +272,9 @@ void BOPAlgo_Builder::Perform()
   BOPAlgo_PaveFiller* pPF=new BOPAlgo_PaveFiller(aAllocator);
   //
   pPF->SetArguments(myArguments);
+  pPF->SetRunParallel(myRunParallel);
+  pPF->SetProgressIndicator(myProgressIndicator);
+  pPF->SetFuzzyValue(myFuzzyValue);
   //
   pPF->Perform();
   //
@@ -239,6 +295,21 @@ void BOPAlgo_Builder::PerformWithFiller(const BOPAlgo_PaveFiller& theFiller)
 //purpose  : 
 //=======================================================================
 void BOPAlgo_Builder::PerformInternal(const BOPAlgo_PaveFiller& theFiller)
+{
+  try { 
+    OCC_CATCH_SIGNALS
+    PerformInternal1(theFiller);
+  }
+  //
+  catch (Standard_Failure) {
+    myErrorStatus=191;
+  }  
+}
+//=======================================================================
+//function : PerformInternal1
+//purpose  : 
+//=======================================================================
+void BOPAlgo_Builder::PerformInternal1(const BOPAlgo_PaveFiller& theFiller)
 {
   myErrorStatus=0;
   //
@@ -362,7 +433,6 @@ void BOPAlgo_Builder::PerformInternal(const BOPAlgo_PaveFiller& theFiller)
 //=======================================================================
 void BOPAlgo_Builder::PostTreat()
 {
-  //BRepLib::SameParameter(myShape, 1.e-7, Standard_True);
-  BOPTools_AlgoTools::CorrectTolerances(myShape, 0.05);
-  BOPTools_AlgoTools::CorrectShapeTolerances(myShape);
+  BOPTools_AlgoTools::CorrectTolerances(myShape, 0.05, myRunParallel);
+  BOPTools_AlgoTools::CorrectShapeTolerances(myShape, myRunParallel);
 }

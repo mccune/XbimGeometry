@@ -14,7 +14,6 @@
 // Alternatively, this file may be used under the terms of Open CASCADE
 // commercial license or contractual agreement.
 
-#define PRO8619 //GG_160697
 //              Convertir correctement les unites translatees
 
 #include <Units_UnitsSystem.ixx>
@@ -106,7 +105,6 @@ void Units_UnitsSystem::Specify(const Standard_CString aquantity,const Standard_
   }
   Handle(Units_Token) token = unitsentence.Evaluate();
 
-#ifdef PRO8619
   if( token->IsKind(STANDARD_TYPE(Units_ShiftedToken)) ) {
     Handle(Units_ShiftedToken) stoken =
         Handle(Units_ShiftedToken)::DownCast(token) ;
@@ -114,9 +112,7 @@ void Units_UnitsSystem::Specify(const Standard_CString aquantity,const Standard_
     unit = sunit = new Units_ShiftedUnit(aunit,aunit);
     sunit->Value(stoken->Value());
     sunit->Move(stoken->Move());
-  } else
-#endif
-  {
+  } else {
     unit = new Units_Unit(aunit,aunit);
     unit->Value(token->Value());
   }
@@ -269,7 +265,9 @@ TCollection_AsciiString Units_UnitsSystem::ActiveUnit(const Standard_CString aqu
       if(index2)
         return unitssequence->Value(index2)->SymbolsSequence()->Value(1)->String();
       else {
+#ifdef OCCT_DEBUG
         cout<<" Pas d'unite active pour "<<aquantity<<endl;
+#endif
         return TCollection_AsciiString() ;
       }
     }
@@ -322,7 +320,6 @@ Standard_Real Units_UnitsSystem::ConvertSIValueToUserSystem
       if(activeunit) {
         unitssequence = quantity->Sequence();
         unit = unitssequence->Value(activeunit);
-#ifdef PRO8619
         if( unit->IsKind(STANDARD_TYPE(Units_ShiftedUnit)) ) {
           sunit = Handle(Units_ShiftedUnit)::DownCast(unit) ;
           uvalue = sunit->Value();
@@ -330,7 +327,6 @@ Standard_Real Units_UnitsSystem::ConvertSIValueToUserSystem
           return avalue/uvalue - umove;
         }
         else
-#endif
         {
           uvalue = unit->Value();
           return avalue/uvalue;
@@ -373,14 +369,12 @@ Standard_Real Units_UnitsSystem::ConvertUserSystemValueToSI
       if(activeunit) {
         unitssequence = quantity->Sequence();
         unit = unitssequence->Value(activeunit);
-#ifdef PRO8619
         if( unit->IsKind(STANDARD_TYPE(Units_ShiftedUnit)) ) {
           sunit = Handle(Units_ShiftedUnit)::DownCast(unit) ;
           uvalue = sunit->Value();
           umove = sunit->Move();
           return avalue*(uvalue + umove);
         } else
-#endif
         {
           uvalue = unit->Value();
           return avalue*uvalue;
@@ -408,7 +402,7 @@ Standard_Real Units_UnitsSystem::ConvertUserSystemValueToSI
 void Units_UnitsSystem::Dump() const
 {
   Handle(Standard_Transient) transient = This();
-  Handle(Units_UnitsSystem) unitssystem = *(Handle_Units_UnitsSystem*)&transient;
+  Handle(Units_UnitsSystem) unitssystem = *(Handle(Units_UnitsSystem)*)&transient;
   Units_Explorer explorer(unitssystem);
   cout<<" UNITSSYSTEM : "<<endl;
   for(; explorer.MoreQuantity(); explorer.NextQuantity()) {

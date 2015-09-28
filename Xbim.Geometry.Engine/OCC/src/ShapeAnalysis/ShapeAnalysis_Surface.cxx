@@ -473,7 +473,7 @@ static Handle(Geom_Curve) ComputeIso
   }
   catch(Standard_Failure) {
     iso.Nullify();
-#ifdef DEB //:s5
+#ifdef OCCT_DEBUG //:s5
     cout << "\nWarning: ShapeAnalysis_Surface, ComputeIso(): Exception in UVIso(): "; 
     Standard_Failure::Caught()->Print(cout); cout << endl;
 #endif
@@ -875,21 +875,53 @@ gp_Pnt2d ShapeAnalysis_Surface::NextValueOfUV(const gp_Pnt2d &p2dPrev,
   case GeomAbs_SurfaceOfRevolution :
   case GeomAbs_OffsetSurface :
 
-//    if ( ! mySurf->Continuity() == GeomAbs_C0 ) //: S4030: fix on BUC40132 8355 & PRO7978 1987: SI because of bad data
     {
+      if (surftype == GeomAbs_BSplineSurface)
+      {
+        Handle(Geom_BSplineSurface) aBSpline =  SurfAdapt.BSpline();
+
+        //Check near to knot position ~ near to C0 points on U isoline.
+        if ( SurfAdapt.UContinuity() == GeomAbs_C0 )
+        {
+          Standard_Integer aMinIndex = aBSpline->FirstUKnotIndex();
+          Standard_Integer aMaxIndex = aBSpline->LastUKnotIndex();
+          for (Standard_Integer anIdx = aMinIndex; anIdx <= aMaxIndex; ++anIdx)
+          {
+            Standard_Real aKnot = aBSpline->UKnot(anIdx);
+            if (Abs (aKnot - p2dPrev.X()) < Precision::Confusion())
+              return ValueOfUV ( P3D, preci );
+          }
+        }
+
+        //Check near to knot position ~ near to C0 points on U isoline.
+        if ( SurfAdapt.VContinuity() == GeomAbs_C0 )
+        {
+          Standard_Integer aMinIndex = aBSpline->FirstVKnotIndex();
+          Standard_Integer aMaxIndex = aBSpline->LastVKnotIndex();
+          for (Standard_Integer anIdx = aMinIndex; anIdx <= aMaxIndex; ++anIdx)
+          {
+            Standard_Real aKnot = aBSpline->VKnot(anIdx);
+            if (Abs (aKnot - p2dPrev.Y()) < Precision::Confusion())
+              return ValueOfUV ( P3D, preci );
+          }
+        }
+      }
+
       gp_Pnt2d sol;
       Standard_Boolean res = SurfaceNewton(p2dPrev,P3D,preci,sol);
-      if ( res ) {
-	Standard_Real gap = P3D.Distance ( Value(sol) );
-	if ( res ==2 || //:q6 abv 19 Mar 99: protect against strange attractors
-	     (maxpreci > 0. && gap - maxpreci > Precision::Confusion()) ) { //:q1: check with maxpreci
-	  Standard_Real U = sol.X(), V = sol.Y();
-	  myGap = UVFromIso ( P3D, preci, U, V );
-//	  gp_Pnt2d p = ValueOfUV ( P3D, preci );
-	  if ( gap >= myGap ) return gp_Pnt2d ( U, V );
-	}
-	myGap = gap;
-	return sol;
+      if ( res )
+      {
+        Standard_Real gap = P3D.Distance ( Value(sol) );
+        if ( res == 2 || //:q6 abv 19 Mar 99: protect against strange attractors
+          ( maxpreci > 0. && gap - maxpreci > Precision::Confusion()) ) 
+        { //:q1: check with maxpreci
+          Standard_Real U = sol.X(), V = sol.Y();
+          myGap = UVFromIso ( P3D, preci, U, V );
+          //	  gp_Pnt2d p = ValueOfUV ( P3D, preci );
+          if ( gap >= myGap ) return gp_Pnt2d ( U, V );
+        }
+        myGap = gap;
+        return sol;
       }
     }
     break;
@@ -968,12 +1000,12 @@ gp_Pnt2d ShapeAnalysis_Surface::ValueOfUV(const gp_Pnt& P3D,const Standard_Real 
 	gp_Pnt2d prev(S,T);
 	gp_Pnt2d solution;
 	if (SurfaceNewton(prev,P3D,preci,solution)) {
-#ifdef DEBUG
+#ifdef OCCT_DEBUG
 	  cout <<"Newton found point on conic extrusion"<<endl;
 #endif
 	  return solution;
 	}
-#ifdef DEBUG
+#ifdef OCCT_DEBUG
 	cout <<"Newton failed point on conic extrusion"<<endl;
 #endif
 	uf = -500;
@@ -1089,7 +1121,7 @@ gp_Pnt2d ShapeAnalysis_Surface::ValueOfUV(const gp_Pnt& P3D,const Standard_Real 
 
       }
       else {
-#ifdef DEB
+#ifdef OCCT_DEBUG
 	cout << "Warning: ShapeAnalysis_Surface::ValueOfUV(): Extrema failed, doing Newton" << endl;
 #endif
 	// on essai sur les bords
@@ -1127,7 +1159,7 @@ gp_Pnt2d ShapeAnalysis_Surface::ValueOfUV(const gp_Pnt& P3D,const Standard_Real 
     //szv#4:S4163:12Mar99 optimized
     S = (Precision::IsInfinite(uf))? 0 : (uf+ul) / 2.;
     T = (Precision::IsInfinite(vf))? 0 : (vf+vl) / 2.;
-#ifdef DEB //:s5
+#ifdef OCCT_DEBUG //:s5
     cout << "\nWarning: ShapeAnalysis_Surface::ValueOfUV(): Exception: "; 
     Standard_Failure::Caught()->Print(cout); cout << endl;
 #endif
@@ -1325,7 +1357,7 @@ Standard_Real ShapeAnalysis_Surface::UVFromIso(const gp_Pnt& P3d,const Standard_
   }  // fin try RAJOUT
   catch(Standard_Failure) {
     theMin = RealLast();    // theMin de depart
-#ifdef DEB //:s5
+#ifdef OCCT_DEBUG //:s5
     cout << "\nWarning: ShapeAnalysis_Curve::UVFromIso(): Exception: "; 
     Standard_Failure::Caught()->Print(cout); cout << endl;
 #endif

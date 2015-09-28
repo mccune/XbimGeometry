@@ -19,7 +19,6 @@
 // Modified     Mon Apr  7 16:52:40 1997 by Patrick BOSINCO
 //              Add Dimensions access methods
 
-#define PRO8619	//GG_160697
 //		Convertir correctement les unites translatees
 
 #include <stdlib.h>
@@ -121,7 +120,9 @@ Handle(Units_Quantity) Units::Quantity(const Standard_CString aquantity)
       if(quantity->Name() == aquantity) return quantity;
     }
 
+#ifdef OCCT_DEBUG
   cout<<"Warning: BAD Quantity = Units::Quantity(quantity('" << aquantity << "'))" << endl;
+#endif
   return nullquantity;
 }
 
@@ -161,7 +162,9 @@ Standard_CString Units::FirstQuantity(const Standard_CString aunit)
     }
   }
 
+#ifdef OCCT_DEBUG
   cout<<"Warning: BAD Quantity = Units::Quantity(unit('" << symbol << "'))" << endl;
+#endif
   return NULL;
 }
 
@@ -262,7 +265,9 @@ Standard_Real Units::ToSI(const Standard_Real aData,
     lastunit = TCollection_AsciiString(aUnit);
     Units_UnitSentence unitsentence(aUnit);
     if(!unitsentence.IsDone()) {
+#ifdef OCCT_DEBUG
       cout<<"can not convert - incorrect unit => return 0.0"<<endl;
+#endif
       return 0.0;
     }
     Handle(Units_Token) token = unitsentence.Evaluate();
@@ -276,11 +281,7 @@ Standard_Real Units::ToSI(const Standard_Real aData,
     lastdimension = token->Dimensions();
   }
   dim = lastdimension;
-#ifdef PRO8619
   return (aData + lastmove) * lastvalue;
-#else
-  return aData * lastvalue;
-#endif
 }
 
 
@@ -309,7 +310,9 @@ Standard_Real Units::FromSI(const Standard_Real aData,
     lastunit = TCollection_AsciiString(aUnit);
     Units_UnitSentence unitsentence(aUnit);
     if(!unitsentence.IsDone()) {
+#ifdef OCCT_DEBUG
       cout<<"Warning: can not convert - incorrect unit => return 0.0"<<endl;
+#endif
       return 0.0;
     }
     Handle(Units_Token) token = unitsentence.Evaluate();
@@ -323,11 +326,7 @@ Standard_Real Units::FromSI(const Standard_Real aData,
     lastdimension = token->Dimensions();
   }
   dim = lastdimension;
-#ifdef PRO8619
   return (aData / lastvalue) - lastmove;
-#else
-  return aData / lastvalue;
-#endif
 }
 
 

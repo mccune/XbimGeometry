@@ -35,7 +35,7 @@
 #define COMMENT  2
 #define INCLUDE  3
 #define RESOURCE 4
-#define PARSEERROR   -1
+#define ERROR   -1
 
 static Standard_Integer WhatKindOfLine(OSD_File& aFile,
 				       TCollection_AsciiString& aToken1,
@@ -134,7 +134,7 @@ void Resource_Manager::Load(TCollection_AsciiString& aDirectory,
       if (!aMap.Bind(Token1,Token2))
         aMap(Token1) = Token2;
       break;
-	case PARSEERROR:
+    case ERROR :
       if (myVerbose)
 	cout << "Resource Manager: Syntax error at line "
 	  << LineNumber << " in file : " << FileName << endl;
@@ -165,7 +165,7 @@ static Standard_Integer WhatKindOfLine(OSD_File& aFile,
   if (Line.Value(1) == '#') {
     Line.Remove(1);
     if ((Line.Token(" \t")).IsDifferent("include"))
-		return PARSEERROR;
+      return ERROR;
 
     aToken1 = Line.Token(" \t\n",2);
     return INCLUDE;
@@ -177,7 +177,7 @@ static Standard_Integer WhatKindOfLine(OSD_File& aFile,
 
   Pos2 = Line.Location(1,':',Pos1,Line.Length());
   if (!Pos2 || Pos1 == Pos2)
-	  return PARSEERROR;
+    return ERROR;
 
   for (Pos = Pos2-1; Line.Value(Pos) == '\t' || Line.Value(Pos) == ' ' ; Pos--);
   aToken1 = Line.SubString(Pos1, Pos);
@@ -198,9 +198,11 @@ static Standard_Integer WhatKindOfLine(OSD_File& aFile,
   }
   if (Pos == Line.Length())
     aToken2.Clear();
-  else
-    aToken2 = Line.SubString(Pos,Line.Length()-1);
-
+  else {
+    Line.Remove(1,Pos-1);
+    Line.Remove(Line.Length());
+    aToken2 = Line;
+  }
   if (Debug)
     cout << "'\t Value = '" << aToken2 << "'" << endl << flush;
   return RESOURCE;

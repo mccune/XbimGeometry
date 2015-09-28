@@ -14,7 +14,6 @@
 
 // File: BOPAlgo_ShellSplitter.cxx
 // Created: Thu Jan 16 08:33:50 2014
-// <pkv@PETREX>
 
 #include <BOPAlgo_ShellSplitter.ixx>
 //
@@ -25,14 +24,14 @@
 #include <BRep_Builder.hxx>
 #include <TopExp_Explorer.hxx>
 //
-#include <BOPCol_TBB.hxx>
+#include <BOPCol_Parallel.hxx>
 #include <BOPCol_IndexedMapOfShape.hxx>
 #include <BOPCol_MapOfShape.hxx>
 #include <BOPCol_MapOfOrientedShape.hxx>
 #include <BOPCol_NCVector.hxx>
 #include <BOPCol_IndexedDataMapOfShapeListOfShape.hxx>
 //
-#include <BOPInt_Context.hxx>
+#include <IntTools_Context.hxx>
 //
 #include <BOPTools.hxx>
 #include <BOPTools_AlgoTools.hxx>
@@ -40,14 +39,17 @@
 
 //
 static
-  Standard_Boolean IsClosedShell(const TopoDS_Shell& );
-//
-static
   void MakeShell(const BOPCol_ListOfShape& , 
                  TopoDS_Shell& );
 //
 static
   void RefineShell(TopoDS_Shell& theShell);
+//
+static
+  void MapEdgesAndFaces
+  (const TopoDS_Shape& aF,
+   BOPCol_IndexedDataMapOfShapeListOfShape& aMEF,
+   const Handle(NCollection_BaseAllocator)& theAllocator);
 
 //=======================================================================
 //class    : BOPAlgo_CBK
@@ -80,11 +82,11 @@ class BOPAlgo_CBK {
 typedef BOPCol_NCVector
   <BOPAlgo_CBK> BOPAlgo_VectorOfCBK; 
 //
-typedef BOPCol_TBBFunctor 
+typedef BOPCol_Functor 
   <BOPAlgo_CBK,
   BOPAlgo_VectorOfCBK> BOPAlgo_CBKFunctor;
 //
-typedef BOPCol_TBBCnt 
+typedef BOPCol_Cnt 
   <BOPAlgo_CBKFunctor,
   BOPAlgo_VectorOfCBK> BOPAlgo_CBKCnt;
 //
@@ -168,7 +170,7 @@ void BOPAlgo_ShellSplitter::MakeConnexityBlocks()
   Standard_Boolean bRegular;
   Standard_Integer i, j, aNbE, aNbES, aNbEP, k, aNbCB;
   TopoDS_Shape aFR;
-  TopExp_Explorer aExpF;
+  TopoDS_Iterator aItF, aItW;
   BOPCol_IndexedDataMapOfShapeListOfShape aMEF(100, myAllocator);
   BOPCol_IndexedMapOfShape aMEP(100, myAllocator);
   BOPCol_IndexedMapOfShape aMFC(100, myAllocator);
@@ -188,10 +190,7 @@ void BOPAlgo_ShellSplitter::MakeConnexityBlocks()
     const TopoDS_Shape& aSE=aIt.Value();
     if (!aMEP.Contains(aSE)) {
       aMEP.Add(aSE);
-      BOPTools::MapShapesAndAncestors(aSE, 
-                                      TopAbs_EDGE, 
-                                      TopAbs_FACE, 
-                                      aMEF);
+      MapEdgesAndFaces(aSE, aMEF, myAllocator);
     }
     else {
       aMER.Add(aSE);
@@ -229,12 +228,26 @@ void BOPAlgo_ShellSplitter::MakeConnexityBlocks()
         for (; aIt.More(); aIt.Next()) {
           const TopoDS_Shape& aF=aIt.Value();
           if (aMFC.Add(aF)) {
-            aExpF.Init(aF, TopAbs_EDGE);
-            for (; aExpF.More(); aExpF.Next()) {
-              const TopoDS_Shape& aEF=aExpF.Current();
-              if (aMES.Add(aEF)) {
-                aMEAdd.Add(aEF);
+            aItF.Initialize(aF);
+            while (aItF.More()) {
+              const TopoDS_Shape& aW=aItF.Value();  
+              if (aW.ShapeType()!=TopAbs_WIRE) {
+                aItF.Next();
+                continue;
               }
+              //
+              aItW.Initialize(aW);
+              while (aItW.More()) {
+                const TopoDS_Shape& aEF=aItW.Value();  
+                //
+                if (aMES.Add(aEF)) {
+                  aMEAdd.Add(aEF);
+                }
+                //
+                aItW.Next();
+              }
+              //
+              aItF.Next();
             }
           }
         }
@@ -277,10 +290,7 @@ void BOPAlgo_ShellSplitter::MakeConnexityBlocks()
       }
       //
       if (bRegular) {
-        BOPTools::MapShapesAndAncestors(aFR,
-                                        TopAbs_EDGE, 
-                                        TopAbs_FACE, 
-                                        aMEFR);
+        MapEdgesAndFaces(aFR, aMEFR, myAllocator);
       }
     }
     //
@@ -320,7 +330,7 @@ void BOPAlgo_ShellSplitter::SplitBlock(BOPTools_ConnexityBlock& aCB)
   BOPCol_MapOfOrientedShape AddedFacesMap;
   BOPCol_IndexedDataMapOfShapeListOfShape aEFMap, aMEFP;
   // 
-  Handle (BOPInt_Context) aContext=new BOPInt_Context;
+  Handle (IntTools_Context) aContext=new IntTools_Context;
   //
   const BOPCol_ListOfShape& myShapes=aCB.Shapes();
   //
@@ -444,12 +454,14 @@ void BOPAlgo_ShellSplitter::SplitBlock(BOPTools_ConnexityBlock& aCB)
       } // for (; aExp.More(); aExp.Next()) {
     } // for (; aItS.More(); aItS.Next()) {
     //
-    if (IsClosedShell(aShell)) {
+    if (BRep_Tool::IsClosed(aShell)) {
+      aShell.Closed (Standard_True);
       myLoops.Append(aShell);
     }
     else {
       RefineShell(aShell);
-      if (IsClosedShell(aShell)) {
+      if (BRep_Tool::IsClosed(aShell)) {
+        aShell.Closed (Standard_True);
         myLoops.Append(aShell);
       }
     }
@@ -557,48 +569,6 @@ void RefineShell(TopoDS_Shell& theShell)
   }
 }
 //=======================================================================
-//function : IsClosedShell
-//purpose  : 
-//=======================================================================
-Standard_Boolean IsClosedShell(const TopoDS_Shell& theShell)
-{
-  Standard_Integer i, aNbE;
-  Standard_Boolean bRet;
-  TopoDS_Iterator aIt;
-  TopExp_Explorer aExp;
-  BOPCol_MapOfShape aM;
-  // 
-  bRet=Standard_False;
-  //
-  aIt.Initialize(theShell);
-  for(i=0; aIt.More(); aIt.Next(), ++i) {
-    const TopoDS_Shape& aF=aIt.Value();
-    //
-    aExp.Init(aF, TopAbs_EDGE);
-    for (; aExp.More(); aExp.Next()) {
-      const TopoDS_Edge& aE=(*(TopoDS_Edge*)(&aExp.Current()));
-      if (BRep_Tool::Degenerated(aE)) {
-        continue;
-      }
-      //
-      if (aE.Orientation()==TopAbs_INTERNAL) {
-        continue;
-      }
-      if (!aM.Add(aE)) {
-        aM.Remove(aE);
-      }
-    }
-  }
-  //
-  if(i) {
-    aNbE=aM.Extent();
-    if (!aNbE) {
-      bRet=!bRet; 
-    }
-  }
-  return bRet;
-}
-//=======================================================================
 //function : MakeShells
 //purpose  : 
 //=======================================================================
@@ -622,7 +592,7 @@ void BOPAlgo_ShellSplitter::MakeShells()
       //
       const BOPCol_ListOfShape& aLF=aCB.Shapes();
       MakeShell(aLF, aShell);
-      aShell.TShape()->Closed(Standard_True);
+      aShell.Closed(Standard_True);
       myShells.Append(aShell);
     }
     else {
@@ -641,8 +611,8 @@ void BOPAlgo_ShellSplitter::MakeShells()
     const BOPCol_ListOfShape& aLS=aCB.Loops();
     aIt.Initialize(aLS);
     for (; aIt.More(); aIt.Next()) {
-      const TopoDS_Shape& aShell=aIt.Value();
-      aShell.TShape()->Closed(Standard_True);
+      TopoDS_Shape& aShell=aIt.ChangeValue();
+      aShell.Closed(Standard_True);
       myShells.Append(aShell);
     }
   }
@@ -663,5 +633,45 @@ void MakeShell(const BOPCol_ListOfShape& aLS,
   for (; aIt.More(); aIt.Next()) {
     const TopoDS_Shape& aF=aIt.Value();
     aBB.Add(aShell, aF);
+  }
+}
+//=======================================================================
+// function: MapEdgesAndFaces
+// purpose: 
+//=======================================================================
+void MapEdgesAndFaces
+  (const TopoDS_Shape& aF,
+   BOPCol_IndexedDataMapOfShapeListOfShape& aMEF,
+   const Handle(NCollection_BaseAllocator)& theAllocator)
+{
+  TopoDS_Iterator aItF, aItW;
+  //
+  aItF.Initialize(aF);
+  while (aItF.More()) {
+    const TopoDS_Shape& aW=aItF.Value();  
+    if (aW.ShapeType()!=TopAbs_WIRE) {
+      aItF.Next();
+      continue;
+    }
+    //
+    aItW.Initialize(aW);
+    while (aItW.More()) {
+      const TopoDS_Shape& aE=aItW.Value();  
+      //
+      if (aMEF.Contains(aE)) {
+        BOPCol_ListOfShape& aLF=aMEF.ChangeFromKey(aE);
+        aLF.Append(aF);
+      }
+      else {
+        BOPCol_ListOfShape aLS(theAllocator);
+        //
+        aLS.Append(aF);
+        aMEF.Add(aE, aLS);
+      }
+      //
+      aItW.Next();
+    }
+    //
+    aItF.Next();
   }
 }

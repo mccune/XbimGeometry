@@ -31,7 +31,11 @@
 #include <Geom_RectangularTrimmedSurface.hxx>
 #include <Bnd_Box.hxx>
 #include <BRepBndLib.hxx>
-
+#include <TopTools_IndexedMapOfShape.hxx>
+#include <TopExp.hxx>
+#include <Geom_Curve.hxx>
+#include <Geom_Line.hxx>
+#include <Geom_TrimmedCurve.hxx>
 namespace Xbim
 {
 	namespace Geometry
@@ -142,6 +146,11 @@ namespace Xbim
 			Init(wire);
 		}
 
+		XbimFace::XbimFace(IXbimWire^ wire, XbimPoint3D pointOnFace, XbimVector3D faceNormal)
+		{
+			Init(wire, pointOnFace, faceNormal);
+		}
+
 		XbimFace::XbimFace(IXbimFace^ face)
 		{
 			Init(face);
@@ -185,6 +194,21 @@ namespace Xbim
 			}
 		}
 
+		void XbimFace::Init(IXbimWire^ xbimWire, XbimPoint3D pointOnFace,  XbimVector3D faceNormal)
+		{
+			if (!dynamic_cast<XbimWire^>(xbimWire))
+				throw gcnew ArgumentException("Only IXbimWires created by Xbim.OCC modules are supported", "xbimWire");
+			XbimWire^ wire = (XbimWire^)xbimWire;
+			if (wire->IsValid && !faceNormal.IsInvalid())
+			{			
+				gp_Pln plane(gp_Pnt(pointOnFace.X, pointOnFace.Y, pointOnFace.Z), gp_Dir(faceNormal.X, faceNormal.Y, faceNormal.Z));
+				BRepBuilderAPI_MakeFace faceMaker(plane, wire, Standard_False);
+				pFace = new TopoDS_Face();
+				*pFace = faceMaker.Face();
+			}
+			GC::KeepAlive(xbimWire);
+		}
+
 		void XbimFace::Init(IXbimWire^ xbimWire)
 		{
 			if (!dynamic_cast<XbimWire^>(xbimWire))
@@ -202,6 +226,8 @@ namespace Xbim
 			}
 			GC::KeepAlive(xbimWire);
 		}
+
+		
 
 		void XbimFace::Init(IXbimFace^ face)
 		{
@@ -358,7 +384,9 @@ namespace Xbim
 				Handle(Geom_Circle) hInner = GC_MakeCircle(inner);
 				TopoDS_Edge innerEdge = BRepBuilderAPI_MakeEdge(hInner);
 				BRepBuilderAPI_MakeWire innerWire;
+				innerEdge.Reverse();
 				innerWire.Add(innerEdge);
+				
 				faceBlder.Add(innerWire);
 			}
 			pFace = new TopoDS_Face();
@@ -419,6 +447,7 @@ namespace Xbim
 					builder.Add(innerWire, BRepBuilderAPI_MakeEdge(vibr, vitr));
 					builder.Add(innerWire, BRepBuilderAPI_MakeEdge(vitr, vitl));
 					builder.Add(innerWire, BRepBuilderAPI_MakeEdge(vitl, vibl));
+					innerWire.Reverse();
 					faceBlder.Add(innerWire);
 				}				
 				pFace = new TopoDS_Face();
@@ -586,6 +615,7 @@ namespace Xbim
 		{
 			if (pFace == nullptr) return nullptr;
 			TopoDS_Wire outerWire = BRepTools::OuterWire(*pFace);//get the outer loop
+			GC::KeepAlive(this);
 			if (outerWire.IsNull()) //check if this is a half space
 			{
 				return nullptr;
@@ -594,6 +624,13 @@ namespace Xbim
 			{
 				return gcnew XbimWire(outerWire);
 			}
+			
+		}
+
+		IXbimWireSet^ XbimFace::Bounds::get()
+		{
+			if (!IsValid) return XbimWireSet::Empty; //return an empty list, avoid using Enumberable::Empty to avoid LINQ dependencies			
+			return gcnew XbimWireSet(this);
 		}
 
 		IXbimWireSet^ XbimFace::InnerBounds::get()
@@ -607,8 +644,10 @@ namespace Xbim
 				if (!wireEx.Current().IsEqual(outerWire))
 					wires.Append(TopoDS::Wire(wireEx.Current()));
 			}
+			GC::KeepAlive(this);
 			return gcnew XbimWireSet(wires);
 		}
+
 
 		XbimRect3D XbimFace::BoundingBox::get()
 		{
@@ -618,6 +657,7 @@ namespace Xbim
 			Standard_Real srXmin, srYmin, srZmin, srXmax, srYmax, srZmax;
 			if (pBox.IsVoid()) return XbimRect3D::Empty;
 			pBox.Get(srXmin, srYmin, srZmin, srXmax, srYmax, srZmax);
+			GC::KeepAlive(this);
 			return XbimRect3D(srXmin, srYmin, srZmin, (srXmax - srXmin), (srYmax - srYmin), (srZmax - srZmin));
 		}
 
@@ -629,12 +669,28 @@ namespace Xbim
 			return gcnew XbimFace(temp);
 		}
 
+		bool XbimFace::IsQuadOrTriangle::get()
+		{
+			if (!IsValid) return false;
+			if (!IsPlanar) return false;
+			TopExp_Explorer wireEx(*pFace, TopAbs_WIRE);
+			wireEx.Next();
+			if (wireEx.More()) return false; //it has holes
+			TopTools_IndexedMapOfShape map;
+			TopExp::MapShapes(*pFace, TopAbs_VERTEX, map);
+			GC::KeepAlive(this);
+			if (map.Extent() == 4 || map.Extent() == 3) return true;
+			return false;
+		}
+
+
 		double XbimFace::Area::get()
 		{
 			if (IsValid)
 			{
 				GProp_GProps gProps;
 				BRepGProp::SurfaceProperties(*pFace, gProps);
+				GC::KeepAlive(this);
 				return gProps.Mass();
 			}
 			else
@@ -647,6 +703,7 @@ namespace Xbim
 			{
 				GProp_GProps gProps;
 				BRepGProp::LinearProperties(*pFace, gProps);
+				GC::KeepAlive(this);
 				return gProps.Mass();
 			}
 			else
@@ -665,6 +722,7 @@ namespace Xbim
 			prop.Normal((u1 + u2) / 2.0, (v1 + v2) / 2.0, centre, normalDir);
 			XbimVector3D vec(normalDir.X(), normalDir.Y(), normalDir.Z());
 			vec.Normalize();
+			GC::KeepAlive(this);
 			return vec;
 		}
 
@@ -678,6 +736,7 @@ namespace Xbim
 			prop.Bounds(u1, u2, v1, v2);
 			prop.Normal((u1 + u2) / 2.0, (v1 + v2) / 2.0, centre, normalDir);
 			XbimPoint3D loc(centre.X(), centre.Y(), centre.Z());
+			GC::KeepAlive(this);
 			return loc;
 		}
 
@@ -687,10 +746,34 @@ namespace Xbim
 			Handle(Geom_Surface) surf = BRep_Tool::Surface(*pFace); //the surface
 			Standard_Real tol = BRep_Tool::Tolerance(*pFace);
 			GeomLib_IsPlanarSurface ps(surf, tol);
-			return ps.IsPlanar() == Standard_True; //see if we have a [lanrar or curved surface, if planar we need only worry about one normal
+			GC::KeepAlive(this);
+			return ps.IsPlanar() == Standard_True; //see if we have a planar or curved surface, if planar we need only worry about one normal
 
 		}
 
+		bool XbimFace::IsPolygonal::get()
+		{
+			if (!IsValid) return false;
+			TopTools_IndexedMapOfShape map;
+			TopExp::MapShapes(*pFace, TopAbs_EDGE, map);
+			for (Standard_Integer i = 1; i <= map.Extent(); i++)
+			{
+				Standard_Real start, end;
+				Handle(Geom_Curve) c3d = BRep_Tool::Curve(TopoDS::Edge(map(i)), start, end);
+				if (!c3d.IsNull())
+				{
+					Handle(Standard_Type) cType = c3d->DynamicType();
+					if (cType != STANDARD_TYPE(Geom_Line))
+					{
+						if (cType != STANDARD_TYPE(Geom_TrimmedCurve)) return false;
+						Handle(Geom_TrimmedCurve) tc = Handle(Geom_TrimmedCurve)::DownCast(c3d);
+						Handle(Standard_Type) tcType = tc->DynamicType();
+						if (tcType != STANDARD_TYPE(Geom_Line)) return false;
+					}
+				}
+			}
+			return true;
+		}
 
 #pragma endregion
 
@@ -771,15 +854,18 @@ namespace Xbim
 			faceMaker.Add(wire);
 			if (!faceMaker.IsDone()) return false;
 			*pFace=faceMaker.Face();
+			GC::KeepAlive(this);
 			return true;
 		}
 
+		
 		XbimPoint3D XbimFace::PointAtParameters(double u, double v)
 		{
 			if (!IsValid) return XbimPoint3D();
 			const Handle(Geom_Surface) &surface = BRep_Tool::Surface(*pFace);
 			gp_Pnt p;
 			surface->D0(u, v, p);
+			GC::KeepAlive(this);
 			return XbimPoint3D(p.X(), p.Y(), p.Z());
 		}
 

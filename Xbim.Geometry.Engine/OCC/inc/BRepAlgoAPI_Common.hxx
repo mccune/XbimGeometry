@@ -6,39 +6,47 @@
 #ifndef _BRepAlgoAPI_Common_HeaderFile
 #define _BRepAlgoAPI_Common_HeaderFile
 
-#ifndef _Standard_HeaderFile
 #include <Standard.hxx>
-#endif
-#ifndef _Standard_DefineAlloc_HeaderFile
 #include <Standard_DefineAlloc.hxx>
-#endif
-#ifndef _Standard_Macro_HeaderFile
 #include <Standard_Macro.hxx>
-#endif
 
-#ifndef _BRepAlgoAPI_BooleanOperation_HeaderFile
 #include <BRepAlgoAPI_BooleanOperation.hxx>
-#endif
-class TopoDS_Shape;
 class BOPAlgo_PaveFiller;
+class TopoDS_Shape;
 
 
-//! The class Common provides a <br>
-//! Boolean common operation on a pair of arguments (Boolean Intersection). <br>
-//!  The class Common provides a framework for: <br>
-//! -           Defining the construction of a common shape; <br>
-//! -           Implementing the   building algorithm <br>
-//! -           Consulting the result. <br>
-class BRepAlgoAPI_Common  : public BRepAlgoAPI_BooleanOperation {
+
+//! The class provides Boolean common operation
+//! between arguments and tools (Boolean Intersection).
+class BRepAlgoAPI_Common  : public BRepAlgoAPI_BooleanOperation
+{
 public:
 
   DEFINE_STANDARD_ALLOC
 
-  //! Constructs a common part for shapes aS1 and aS2 . <br>
-  Standard_EXPORT   BRepAlgoAPI_Common(const TopoDS_Shape& S1,const TopoDS_Shape& S2);
   
-  Standard_EXPORT   BRepAlgoAPI_Common(const TopoDS_Shape& S1,const TopoDS_Shape& S2,const BOPAlgo_PaveFiller& aDSF);
-
+  //! Empty constructor
+  Standard_EXPORT BRepAlgoAPI_Common();
+Standard_EXPORT virtual ~BRepAlgoAPI_Common();
+  
+  //! Empty constructor
+  //! <PF> - PaveFiller object that is carried out
+  Standard_EXPORT BRepAlgoAPI_Common(const BOPAlgo_PaveFiller& PF);
+  
+  //! Constructor with two shapes
+  //! <S1>  -argument
+  //! <S2>  -tool
+  //! <anOperation> - the type of the operation
+  //! Obsolete
+  Standard_EXPORT BRepAlgoAPI_Common(const TopoDS_Shape& S1, const TopoDS_Shape& S2);
+  
+  //! Constructor with two shapes
+  //! <S1>  -argument
+  //! <S2>  -tool
+  //! <anOperation> - the type of the operation
+  //! <PF> - PaveFiller object that is carried out
+  //! Obsolete
+  Standard_EXPORT BRepAlgoAPI_Common(const TopoDS_Shape& S1, const TopoDS_Shape& S2, const BOPAlgo_PaveFiller& PF);
 
 
 
@@ -61,7 +69,6 @@ private:
 
 
 
-// other Inline functions and methods (like "C++: function call" methods)
 
 
-#endif
+#endif // _BRepAlgoAPI_Common_HeaderFile

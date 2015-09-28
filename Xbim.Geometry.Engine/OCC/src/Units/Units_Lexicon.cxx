@@ -55,7 +55,9 @@ void Units_Lexicon::Creates(const Standard_CString afilename)
 {
   ifstream file(afilename, ios::in);
   if(!file) {
+#ifdef OCCT_DEBUG
     cout<<"unable to open "<<afilename<<" for input"<<endl;
+#endif
     return;
   }
 
@@ -121,7 +123,7 @@ Standard_Boolean Units_Lexicon::UpToDate() const
   TCollection_AsciiString string = FileName();
 
   if(!stat(string.ToCString(),&buf)) {
-    if(thetime >= buf.st_ctime)
+    if(thetime >= (Standard_Time)buf.st_ctime)
       return Standard_True;
   }
 

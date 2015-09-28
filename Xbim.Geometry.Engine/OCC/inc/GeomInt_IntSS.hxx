@@ -6,55 +6,25 @@
 #ifndef _GeomInt_IntSS_HeaderFile
 #define _GeomInt_IntSS_HeaderFile
 
-#ifndef _Standard_HeaderFile
 #include <Standard.hxx>
-#endif
-#ifndef _Standard_DefineAlloc_HeaderFile
 #include <Standard_DefineAlloc.hxx>
-#endif
-#ifndef _Standard_Macro_HeaderFile
 #include <Standard_Macro.hxx>
-#endif
 
-#ifndef _IntPatch_Intersection_HeaderFile
 #include <IntPatch_Intersection.hxx>
-#endif
-#ifndef _GeomInt_LineConstructor_HeaderFile
 #include <GeomInt_LineConstructor.hxx>
-#endif
-#ifndef _Handle_GeomAdaptor_HSurface_HeaderFile
 #include <Handle_GeomAdaptor_HSurface.hxx>
-#endif
-#ifndef _Standard_Integer_HeaderFile
 #include <Standard_Integer.hxx>
-#endif
-#ifndef _TColGeom_SequenceOfCurve_HeaderFile
 #include <TColGeom_SequenceOfCurve.hxx>
-#endif
-#ifndef _TColGeom2d_SequenceOfCurve_HeaderFile
 #include <TColGeom2d_SequenceOfCurve.hxx>
-#endif
-#ifndef _Standard_Real_HeaderFile
 #include <Standard_Real.hxx>
-#endif
-#ifndef _Handle_Geom_Surface_HeaderFile
 #include <Handle_Geom_Surface.hxx>
-#endif
-#ifndef _Standard_Boolean_HeaderFile
 #include <Standard_Boolean.hxx>
-#endif
-#ifndef _Handle_Geom_Curve_HeaderFile
 #include <Handle_Geom_Curve.hxx>
-#endif
-#ifndef _Handle_Geom2d_Curve_HeaderFile
 #include <Handle_Geom2d_Curve.hxx>
-#endif
-#ifndef _gp_Pnt_HeaderFile
 #include <gp_Pnt.hxx>
-#endif
-#ifndef _Handle_Adaptor3d_TopolTool_HeaderFile
+#include <Handle_IntPatch_RLine.hxx>
+#include <GeomInt_VectorOfReal.hxx>
 #include <Handle_Adaptor3d_TopolTool.hxx>
-#endif
 class GeomAdaptor_HSurface;
 class StdFail_NotDone;
 class Standard_OutOfRange;
@@ -62,60 +32,78 @@ class Geom_Surface;
 class Geom_Curve;
 class Geom2d_Curve;
 class gp_Pnt2d;
+class IntPatch_RLine;
+class Bnd_Box2d;
 class Adaptor3d_TopolTool;
 
 
 
-class GeomInt_IntSS  {
+class GeomInt_IntSS 
+{
 public:
 
   DEFINE_STANDARD_ALLOC
 
   
-      GeomInt_IntSS();
-  //! performs general intersection of two surfaces just now <br>
-      GeomInt_IntSS(const Handle(Geom_Surface)& S1,const Handle(Geom_Surface)& S2,const Standard_Real Tol,const Standard_Boolean Approx = Standard_True,const Standard_Boolean ApproxS1 = Standard_False,const Standard_Boolean ApproxS2 = Standard_False);
-  //! general intersection of two surfaces <br>
-  Standard_EXPORT     void Perform(const Handle(Geom_Surface)& S1,const Handle(Geom_Surface)& S2,const Standard_Real Tol,const Standard_Boolean Approx = Standard_True,const Standard_Boolean ApproxS1 = Standard_False,const Standard_Boolean ApproxS2 = Standard_False) ;
-  //! intersection of adapted surfaces <br>
-        void Perform(const Handle(GeomAdaptor_HSurface)& HS1,const Handle(GeomAdaptor_HSurface)& HS2,const Standard_Real Tol,const Standard_Boolean Approx = Standard_True,const Standard_Boolean ApproxS1 = Standard_False,const Standard_Boolean ApproxS2 = Standard_False) ;
-  //! general intersection using a starting point <br>
-  Standard_EXPORT     void Perform(const Handle(Geom_Surface)& S1,const Handle(Geom_Surface)& S2,const Standard_Real Tol,const Standard_Real U1,const Standard_Real V1,const Standard_Real U2,const Standard_Real V2,const Standard_Boolean Approx = Standard_True,const Standard_Boolean ApproxS1 = Standard_False,const Standard_Boolean ApproxS2 = Standard_False) ;
-  //! intersection of adapted surfaces using a starting point <br>
-        void Perform(const Handle(GeomAdaptor_HSurface)& HS1,const Handle(GeomAdaptor_HSurface)& HS2,const Standard_Real Tol,const Standard_Real U1,const Standard_Real V1,const Standard_Real U2,const Standard_Real V2,const Standard_Boolean Approx = Standard_True,const Standard_Boolean ApproxS1 = Standard_False,const Standard_Boolean ApproxS2 = Standard_False) ;
+    GeomInt_IntSS();
   
-        Standard_Boolean IsDone() const;
+  //! performs general intersection of two surfaces just now
+    GeomInt_IntSS(const Handle(Geom_Surface)& S1, const Handle(Geom_Surface)& S2, const Standard_Real Tol, const Standard_Boolean Approx = Standard_True, const Standard_Boolean ApproxS1 = Standard_False, const Standard_Boolean ApproxS2 = Standard_False);
   
-        Standard_Real TolReached3d() const;
+  //! general intersection of two surfaces
+  Standard_EXPORT   void Perform (const Handle(Geom_Surface)& S1, const Handle(Geom_Surface)& S2, const Standard_Real Tol, const Standard_Boolean Approx = Standard_True, const Standard_Boolean ApproxS1 = Standard_False, const Standard_Boolean ApproxS2 = Standard_False) ;
   
-        Standard_Real TolReached2d() const;
+  //! intersection of adapted surfaces
+      void Perform (const Handle(GeomAdaptor_HSurface)& HS1, const Handle(GeomAdaptor_HSurface)& HS2, const Standard_Real Tol, const Standard_Boolean Approx = Standard_True, const Standard_Boolean ApproxS1 = Standard_False, const Standard_Boolean ApproxS2 = Standard_False) ;
   
-        Standard_Integer NbLines() const;
+  //! general intersection using a starting point
+  Standard_EXPORT   void Perform (const Handle(Geom_Surface)& S1, const Handle(Geom_Surface)& S2, const Standard_Real Tol, const Standard_Real U1, const Standard_Real V1, const Standard_Real U2, const Standard_Real V2, const Standard_Boolean Approx = Standard_True, const Standard_Boolean ApproxS1 = Standard_False, const Standard_Boolean ApproxS2 = Standard_False) ;
   
-  Standard_EXPORT    const Handle_Geom_Curve& Line(const Standard_Integer Index) const;
+  //! intersection of adapted surfaces using a starting point
+      void Perform (const Handle(GeomAdaptor_HSurface)& HS1, const Handle(GeomAdaptor_HSurface)& HS2, const Standard_Real Tol, const Standard_Real U1, const Standard_Real V1, const Standard_Real U2, const Standard_Real V2, const Standard_Boolean Approx = Standard_True, const Standard_Boolean ApproxS1 = Standard_False, const Standard_Boolean ApproxS2 = Standard_False) ;
   
-  Standard_EXPORT     Standard_Boolean HasLineOnS1(const Standard_Integer Index) const;
+      Standard_Boolean IsDone()  const;
   
-  Standard_EXPORT    const Handle_Geom2d_Curve& LineOnS1(const Standard_Integer Index) const;
+      Standard_Real TolReached3d()  const;
   
-  Standard_EXPORT     Standard_Boolean HasLineOnS2(const Standard_Integer Index) const;
+      Standard_Real TolReached2d()  const;
   
-  Standard_EXPORT    const Handle_Geom2d_Curve& LineOnS2(const Standard_Integer Index) const;
+      Standard_Integer NbLines()  const;
   
-        Standard_Integer NbBoundaries() const;
+  Standard_EXPORT  const  Handle(Geom_Curve)& Line (const Standard_Integer Index)  const;
   
-  Standard_EXPORT    const Handle_Geom_Curve& Boundary(const Standard_Integer Index) const;
+  Standard_EXPORT   Standard_Boolean HasLineOnS1 (const Standard_Integer Index)  const;
   
-        Standard_Integer NbPoints() const;
+  Standard_EXPORT  const  Handle(Geom2d_Curve)& LineOnS1 (const Standard_Integer Index)  const;
   
-        gp_Pnt Point(const Standard_Integer Index) const;
+  Standard_EXPORT   Standard_Boolean HasLineOnS2 (const Standard_Integer Index)  const;
   
-  Standard_EXPORT     gp_Pnt2d Pnt2d(const Standard_Integer Index,const Standard_Boolean OnFirst) const;
+  Standard_EXPORT  const  Handle(Geom2d_Curve)& LineOnS2 (const Standard_Integer Index)  const;
   
-  Standard_EXPORT     void SetTolFixTangents(const Standard_Real aTolCheck,const Standard_Real aTolAngCheck) ;
+      Standard_Integer NbBoundaries()  const;
   
-  Standard_EXPORT     void TolFixTangents(Standard_Real& aTolCheck,Standard_Real& aTolAngCheck) ;
-
+  Standard_EXPORT  const  Handle(Geom_Curve)& Boundary (const Standard_Integer Index)  const;
+  
+      Standard_Integer NbPoints()  const;
+  
+      gp_Pnt Point (const Standard_Integer Index)  const;
+  
+  Standard_EXPORT   gp_Pnt2d Pnt2d (const Standard_Integer Index, const Standard_Boolean OnFirst)  const;
+  
+  Standard_EXPORT   void SetTolFixTangents (const Standard_Real aTolCheck, const Standard_Real aTolAngCheck) ;
+  
+  Standard_EXPORT   void TolFixTangents (Standard_Real& aTolCheck, Standard_Real& aTolAngCheck) ;
+  
+  //! converts RLine to Geom(2d)_Curve.
+  Standard_EXPORT static   void TreatRLine (const Handle(IntPatch_RLine)& theRL, const Handle(GeomAdaptor_HSurface)& theHS1, const Handle(GeomAdaptor_HSurface)& theHS2, Handle(Geom_Curve)& theC3d, Handle(Geom2d_Curve)& theC2d1, Handle(Geom2d_Curve)& theC2d2, Standard_Real& theTolReached) ;
+  
+  //! creates 2D-curve on given surface from given 3D-curve
+  Standard_EXPORT static   void BuildPCurves (const Standard_Real f, const Standard_Real l, Standard_Real& Tol, const Handle(Geom_Surface)& S, const Handle(Geom_Curve)& C, Handle(Geom2d_Curve)& C2d) ;
+  
+  //! puts into theArrayOfParameters the parameters of intersection
+  //! points of given theC2d1 and theC2d2 curves with the boundaries
+  //! of the source surface.
+  Standard_EXPORT static   void TrimILineOnSurfBoundaries (const Handle(Geom2d_Curve)& theC2d1, const Handle(Geom2d_Curve)& theC2d2, const Bnd_Box2d& theBound1, const Bnd_Box2d& theBound2, GeomInt_VectorOfReal& theArrayOfParameters) ;
 
 
 
@@ -123,9 +111,9 @@ public:
 protected:
 
   
-  Standard_EXPORT     void InternalPerform(const Standard_Real Tol,const Standard_Boolean Approx,const Standard_Boolean ApproxS1,const Standard_Boolean ApproxS2,const Standard_Boolean useStart,const Standard_Real U1,const Standard_Real V1,const Standard_Real U2,const Standard_Real V2) ;
+  Standard_EXPORT   void InternalPerform (const Standard_Real Tol, const Standard_Boolean Approx, const Standard_Boolean ApproxS1, const Standard_Boolean ApproxS2, const Standard_Boolean useStart, const Standard_Real U1, const Standard_Real V1, const Standard_Real U2, const Standard_Real V2) ;
   
-  Standard_EXPORT     void MakeCurve(const Standard_Integer Ind,const Handle(Adaptor3d_TopolTool)& D1,const Handle(Adaptor3d_TopolTool)& D2,const Standard_Real Tol,const Standard_Boolean Approx,const Standard_Boolean Approx1,const Standard_Boolean Approx2) ;
+  Standard_EXPORT   void MakeCurve (const Standard_Integer Ind, const Handle(Adaptor3d_TopolTool)& D1, const Handle(Adaptor3d_TopolTool)& D2, const Standard_Real Tol, const Standard_Boolean Approx, const Standard_Boolean Approx1, const Standard_Boolean Approx2) ;
 
 
 
@@ -134,18 +122,18 @@ private:
 
 
 
-IntPatch_Intersection myIntersector;
-GeomInt_LineConstructor myLConstruct;
-Handle_GeomAdaptor_HSurface myHS1;
-Handle_GeomAdaptor_HSurface myHS2;
-Standard_Integer myNbrestr;
-TColGeom_SequenceOfCurve sline;
-TColGeom2d_SequenceOfCurve slineS1;
-TColGeom2d_SequenceOfCurve slineS2;
-Standard_Real myTolReached2d;
-Standard_Real myTolReached3d;
-Standard_Real myTolCheck;
-Standard_Real myTolAngCheck;
+  IntPatch_Intersection myIntersector;
+  GeomInt_LineConstructor myLConstruct;
+  Handle(GeomAdaptor_HSurface) myHS1;
+  Handle(GeomAdaptor_HSurface) myHS2;
+  Standard_Integer myNbrestr;
+  TColGeom_SequenceOfCurve sline;
+  TColGeom2d_SequenceOfCurve slineS1;
+  TColGeom2d_SequenceOfCurve slineS2;
+  Standard_Real myTolReached2d;
+  Standard_Real myTolReached3d;
+  Standard_Real myTolCheck;
+  Standard_Real myTolAngCheck;
 
 
 };
@@ -155,7 +143,6 @@ Standard_Real myTolAngCheck;
 
 
 
-// other Inline functions and methods (like "C++: function call" methods)
 
 
-#endif
+#endif // _GeomInt_IntSS_HeaderFile

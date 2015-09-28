@@ -36,6 +36,10 @@
 #include <TopoDS_Wire.hxx>
 
 #include <StdFail_NotDone.hxx>
+#ifdef OCCT_DEBUG
+#include <BRepTools.hxx>
+static Standard_Boolean AffichSpine = Standard_False;
+#endif
 
 //=======================================================================
 //function : BRepOffsetAPI_MakeOffset
@@ -43,7 +47,9 @@
 //=======================================================================
 
 BRepOffsetAPI_MakeOffset::BRepOffsetAPI_MakeOffset()
-:myIsInitialized( Standard_False)
+  : myIsInitialized( Standard_False),
+    myJoin(GeomAbs_Arc),
+    myIsOpenResult(Standard_False)
 {
 }
 
@@ -54,9 +60,10 @@ BRepOffsetAPI_MakeOffset::BRepOffsetAPI_MakeOffset()
 //=======================================================================
 
 BRepOffsetAPI_MakeOffset::BRepOffsetAPI_MakeOffset(const TopoDS_Face& Spine, 
-  const GeomAbs_JoinType Join)
+                                                   const GeomAbs_JoinType Join,
+                                                   const Standard_Boolean IsOpenResult)
 {
-  Init(Spine, Join);
+  Init(Spine, Join, IsOpenResult);
 }
 
 
@@ -66,11 +73,13 @@ BRepOffsetAPI_MakeOffset::BRepOffsetAPI_MakeOffset(const TopoDS_Face& Spine,
 //=======================================================================
 
 void BRepOffsetAPI_MakeOffset::Init(const TopoDS_Face&     Spine,
-  const GeomAbs_JoinType Join)
+                                    const GeomAbs_JoinType Join,
+                                    const Standard_Boolean IsOpenResult)
 {
   myFace          = Spine;
   myIsInitialized = Standard_True;
   myJoin          = Join;
+  myIsOpenResult  = IsOpenResult;
   TopExp_Explorer exp;
   for (exp.Init(myFace,TopAbs_WIRE); exp.More();exp.Next()) {
     myWires.Append(exp.Current());
@@ -83,11 +92,13 @@ void BRepOffsetAPI_MakeOffset::Init(const TopoDS_Face&     Spine,
 //=======================================================================
 
 BRepOffsetAPI_MakeOffset::BRepOffsetAPI_MakeOffset(const TopoDS_Wire& Spine, 
-  const GeomAbs_JoinType Join)
+                                                   const GeomAbs_JoinType Join,
+                                                   const Standard_Boolean IsOpenResult)
 {
   myWires.Append(Spine);
   myIsInitialized = Standard_True;
   myJoin = Join;
+  myIsOpenResult  = IsOpenResult;
 }
 
 //=======================================================================
@@ -95,9 +106,11 @@ BRepOffsetAPI_MakeOffset::BRepOffsetAPI_MakeOffset(const TopoDS_Wire& Spine,
 //purpose  : 
 //=======================================================================
 
-void BRepOffsetAPI_MakeOffset::Init(const GeomAbs_JoinType Join)
+void BRepOffsetAPI_MakeOffset::Init(const GeomAbs_JoinType Join,
+                                    const Standard_Boolean IsOpenResult)
 {
   myJoin = Join;
+  myIsOpenResult  = IsOpenResult;
 }
 
 //=======================================================================
@@ -118,10 +131,11 @@ void BRepOffsetAPI_MakeOffset::AddWire(const TopoDS_Wire& Spine)
 //=======================================================================
 
 static void BuildDomains(TopoDS_Face&               myFace,
-  TopTools_ListOfShape&      WorkWires,
-  BRepFill_ListOfOffsetWire& myAlgos,
-  GeomAbs_JoinType           myJoin,
-  Standard_Boolean           isPositive)
+                         TopTools_ListOfShape&      WorkWires,
+                         BRepFill_ListOfOffsetWire& myAlgos,
+                         GeomAbs_JoinType           myJoin,
+                         Standard_Boolean           myIsOpenResult,
+                         Standard_Boolean           isPositive)
 {
   BRepAlgo_FaceRestrictor  FR;
   TopoDS_Vertex            VF,VL;
@@ -175,8 +189,20 @@ static void BuildDomains(TopoDS_Face&               myFace,
     StdFail_NotDone::Raise ("BRepOffsetAPI_MakeOffset : Build Domains");
   }
   TopTools_ListOfShape Faces;
+#ifdef OCCT_DEBUG
+  Standard_Integer ns = 0;
+#endif
   for (; FR.More(); FR.Next()) {
     Faces.Append(FR.Current());
+#ifdef OCCT_DEBUG
+    if(AffichSpine)
+    {
+      char name[32];
+      ns++;
+      sprintf(name, "FR%d",ns);
+      BRepTools::Write(FR.Current(), name);
+    }
+#endif
   }
 
   //===========================================
@@ -190,7 +216,7 @@ static void BuildDomains(TopoDS_Face&               myFace,
     for ( ; itW.More(); itW.Next()) {
       B.Add(F,itW.Value());
     }
-    BRepFill_OffsetWire Algo(F, myJoin);
+    BRepFill_OffsetWire Algo(F, myJoin, myIsOpenResult);
     myAlgos.Append(Algo);
     return;
   }
@@ -243,7 +269,7 @@ static void BuildDomains(TopoDS_Face&               myFace,
   // Creation of algorithms on each domain.
   //========================================
   for (itF.Initialize(Faces); itF.More(); itF.Next()) {
-    BRepFill_OffsetWire Algo(TopoDS::Face(itF.Value()), myJoin);
+    BRepFill_OffsetWire Algo(TopoDS::Face(itF.Value()), myJoin, myIsOpenResult);
     myAlgos.Append(Algo);
   }
 }
@@ -253,8 +279,8 @@ static void BuildDomains(TopoDS_Face&               myFace,
 //purpose  : 
 //=======================================================================
 
-void BRepOffsetAPI_MakeOffset::Perform( const Standard_Real Offset,
-  const Standard_Real Alt)
+void BRepOffsetAPI_MakeOffset::Perform(const Standard_Real Offset,
+                                       const Standard_Real Alt)
 {
   StdFail_NotDone_Raise_if ( !myIsInitialized,
     "BRepOffsetAPI_MakeOffset : Perform without Init");
@@ -273,7 +299,7 @@ void BRepOffsetAPI_MakeOffset::Perform( const Standard_Real Offset,
       if( myLeft.IsEmpty() )
       {
         //  Modified by Sergey KHROMOV - Fri Apr 27 14:35:26 2001 Begin
-        BuildDomains(myFace,myWires,myLeft,myJoin, Standard_False);
+        BuildDomains(myFace,myWires,myLeft,myJoin,myIsOpenResult, Standard_False);
         //  Modified by Sergey KHROMOV - Fri Apr 27 14:35:26 2001 End
       }
 
@@ -296,7 +322,7 @@ void BRepOffsetAPI_MakeOffset::Perform( const Standard_Real Offset,
       if (myRight.IsEmpty())
       {
         //  Modified by Sergey KHROMOV - Fri Apr 27 14:35:28 2001 Begin
-        BuildDomains(myFace,myWires,myRight,myJoin, Standard_True);
+        BuildDomains(myFace,myWires,myRight,myJoin,myIsOpenResult, Standard_True);
         //  Modified by Sergey KHROMOV - Fri Apr 27 14:35:35 2001 End
       }
 
@@ -325,11 +351,13 @@ void BRepOffsetAPI_MakeOffset::Perform( const Standard_Real Offset,
     else
       Done();
   }
-  catch(...) //Every exception was caught.
+  catch(Standard_Failure) //Every exception was caught.
   {
+#ifdef OCCT_DEBUG
     cout<<"An exception was caught in BRepOffsetAPI_MakeOffset::Perform : ";
     Standard_ConstructionError::Caught()->Print(cout); 
     cout<<endl;
+#endif
     NotDone();
     myShape.Nullify();
   }

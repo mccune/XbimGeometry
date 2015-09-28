@@ -14,7 +14,7 @@
 // Alternatively, this file may be used under the terms of Open CASCADE
 // commercial license or contractual agreement.
 
-//#ifndef DEB
+//#ifndef OCCT_DEBUG
 #define No_Standard_RangeError
 #define No_Standard_OutOfRange
 #define No_Standard_DimensionError
@@ -25,56 +25,49 @@
 #include <math_Gauss.hxx>
 #include <math_Jacobi.hxx>
 
-//============================================================================
-math_NewtonMinimum::math_NewtonMinimum(math_MultipleVarFunctionWithHessian& F, 
-				       const math_Vector& StartingPoint,
-				       const Standard_Real Tolerance,
-				       const Standard_Integer NbIterations,
-				       const Standard_Real Convexity,
-				       const Standard_Boolean WithSingularity)
-//============================================================================
-                  : TheLocation(1, F.NbVariables()),
-                    TheGradient(1, F.NbVariables()),
-		    TheStep(1, F.NbVariables(), 10*Tolerance),
-                    TheHessian(1, F.NbVariables(), 1, F.NbVariables() )
+//=======================================================================
+//function : math_NewtonMinimum
+//purpose  : Constructor
+//=======================================================================
+math_NewtonMinimum::math_NewtonMinimum(
+  const math_MultipleVarFunctionWithHessian& theFunction,
+  const Standard_Real                        theTolerance,
+  const Standard_Integer                     theNbIterations,
+  const Standard_Real                        theConvexity,
+  const Standard_Boolean                     theWithSingularity
+  )
+: TheStatus  (math_NotBracketed),
+  TheLocation(1, theFunction.NbVariables()),
+  TheGradient(1, theFunction.NbVariables()),
+  TheStep    (1, theFunction.NbVariables(), 10.0 * theTolerance),
+  TheHessian (1, theFunction.NbVariables(), 1, theFunction.NbVariables()),
+  PreviousMinimum   (0.0),
+  TheMinimum        (0.0),
+  MinEigenValue     (0.0),
+  XTol              (theTolerance),
+  CTol              (theConvexity),
+  nbiter            (0),
+  NoConvexTreatement(theWithSingularity),
+  Convex            (Standard_True),
+  Done              (Standard_False),
+  Itermax           (theNbIterations)
 {
-       XTol = Tolerance;
-       CTol = Convexity;
-       Itermax = NbIterations;
-       NoConvexTreatement = WithSingularity;
-       Convex = Standard_True;
-//       Done = Standard_True;
-//       TheStatus = math_OK;
-       Perform ( F, StartingPoint);
 }
 
-//============================================================================
-math_NewtonMinimum::math_NewtonMinimum(math_MultipleVarFunctionWithHessian& F,
-				       const Standard_Real Tolerance,
-				       const Standard_Integer NbIterations,
-				       const Standard_Real Convexity,
-				       const Standard_Boolean WithSingularity)
-//============================================================================
-                  : TheLocation(1, F.NbVariables()),
-                    TheGradient(1, F.NbVariables()),
-		    TheStep(1, F.NbVariables(), 10*Tolerance),
-                    TheHessian(1, F.NbVariables(), 1, F.NbVariables() )
+//=======================================================================
+//function : ~math_NewtonMinimum
+//purpose  : Destructor
+//=======================================================================
+math_NewtonMinimum::~math_NewtonMinimum()
 {
-       XTol = Tolerance;
-       CTol = Convexity;
-       Itermax = NbIterations;
-       NoConvexTreatement = WithSingularity;
-       Convex = Standard_True;
-       Done = Standard_False;
-       TheStatus = math_NotBracketed;
 }
-//============================================================================
-void math_NewtonMinimum::Delete()
-{}
-//============================================================================
+
+//=======================================================================
+//function : Perform
+//purpose  : 
+//=======================================================================
 void math_NewtonMinimum::Perform(math_MultipleVarFunctionWithHessian& F,
-				 const math_Vector& StartingPoint)
-//============================================================================
+                                 const math_Vector& StartingPoint)
 {
   math_Vector Point1 (1, F.NbVariables());
   Point1 =  StartingPoint;
@@ -143,12 +136,19 @@ void math_NewtonMinimum::Perform(math_MultipleVarFunctionWithHessian& F,
     }
    
     LU.Solve(TheGradient, TheStep);
-    *suivant = *precedent - TheStep;
+    Standard_Boolean hasProblem = Standard_False;
+    do
+    {
+      *suivant = *precedent - TheStep;
 
+      //  Gestion de la convergence
+      hasProblem = !(F.Value(*suivant, TheMinimum));
 
-    //  Gestion de la convergence
-
-    F.Value(*suivant, TheMinimum);
+      if (hasProblem)
+      {
+        TheStep /= 2.0;
+      }
+    } while (hasProblem);
 
     if (IsConverged()) { NbConv++; }
     else               { NbConv=0; }
@@ -182,26 +182,20 @@ void math_NewtonMinimum::Perform(math_MultipleVarFunctionWithHessian& F,
  TheLocation = *precedent;    
 }
 
-//============================================================================
-Standard_Boolean math_NewtonMinimum::IsConverged() const 
-//============================================================================
-{
-  return ( (TheStep.Norm() <= XTol ) || 
-	 ( Abs(TheMinimum-PreviousMinimum) <= XTol*Abs(PreviousMinimum) ));
-}
-
-//============================================================================
+//=======================================================================
+//function : Dump
+//purpose  : 
+//=======================================================================
 void math_NewtonMinimum::Dump(Standard_OStream& o) const 
-//============================================================================
 {
-       o<< "math_Newton Optimisation: ";
-         o << " Done   ="  << Done << endl; 
-         o << " Status = " << (Standard_Integer)TheStatus << endl;
-	 o <<" Location Vector = " << Location() << endl;
-	 o <<" Minimum value = "<< Minimum()<< endl;
-	 o <<" Previous value = "<< PreviousMinimum << endl;
-	 o <<" Number of iterations = " <<NbIterations() << endl;
-	 o <<" Convexity = " << Convex << endl;
-         o <<" Eigen Value = " << MinEigenValue << endl;
+  o<< "math_Newton Optimisation: ";
+  o << " Done   ="  << Done << endl; 
+  o << " Status = " << (Standard_Integer)TheStatus << endl;
+  o << " Location Vector = " << Location() << endl;
+  o << " Minimum value = "<< Minimum()<< endl;
+  o << " Previous value = "<< PreviousMinimum << endl;
+  o << " Number of iterations = " <<NbIterations() << endl;
+  o << " Convexity = " << Convex << endl;
+  o << " Eigen Value = " << MinEigenValue << endl;
 }
 

@@ -6,22 +6,12 @@
 #ifndef _BRepFill_HeaderFile
 #define _BRepFill_HeaderFile
 
-#ifndef _Standard_HeaderFile
 #include <Standard.hxx>
-#endif
-#ifndef _Standard_DefineAlloc_HeaderFile
 #include <Standard_DefineAlloc.hxx>
-#endif
-#ifndef _Standard_Macro_HeaderFile
 #include <Standard_Macro.hxx>
-#endif
 
-#ifndef _Standard_Boolean_HeaderFile
 #include <Standard_Boolean.hxx>
-#endif
-#ifndef _Standard_Real_HeaderFile
 #include <Standard_Real.hxx>
-#endif
 class TopoDS_Face;
 class TopoDS_Edge;
 class TopoDS_Shell;
@@ -50,8 +40,6 @@ class BRepFill_OffsetWire;
 class BRepFill_OffsetAncestors;
 class BRepFill_ListOfOffsetWire;
 class BRepFill_ApproxSeewing;
-class BRepFill_MultiLine;
-class BRepFill_MultiLineTool;
 class BRepFill_ComputeCLine;
 class BRepFill_TrimSurfaceTool;
 class BRepFill_TrimEdgeTool;
@@ -75,7 +63,6 @@ class BRepFill_SequenceOfFaceAndOrder;
 class BRepFill_SequenceOfEdgeFaceAndOrder;
 class BRepFill_ListNodeOfListOfOffsetWire;
 class BRepFill_ListIteratorOfListOfOffsetWire;
-class BRepFill_MyLeastSquareOfComputeCLine;
 class BRepFill_SequenceNodeOfSequenceOfSection;
 class BRepFill_DataMapNodeOfDataMapOfNodeDataMapOfShapeShape;
 class BRepFill_DataMapIteratorOfDataMapOfNodeDataMapOfShapeShape;
@@ -97,28 +84,33 @@ class BRepFill_SequenceNodeOfSequenceOfEdgeFaceAndOrder;
 
 
 
-class BRepFill  {
+class BRepFill 
+{
 public:
 
   DEFINE_STANDARD_ALLOC
 
-  //! Computes a ruled surface between two edges. <br>
-  Standard_EXPORT   static  TopoDS_Face Face(const TopoDS_Edge& Edge1,const TopoDS_Edge& Edge2) ;
-  //! Computes a ruled surface between two wires. <br>
-//!          The wires must have the same number of edges. <br>
-  Standard_EXPORT   static  TopoDS_Shell Shell(const TopoDS_Wire& Wire1,const TopoDS_Wire& Wire2) ;
-  //! Computes  <AxeProf>  as Follow. <Location> is <br>
-//!          the Position of the nearest vertex V  of <Profile> <br>
-//!          to <Spine>.<XDirection> is confused with the tangent <br>
-//!          to <Spine> at the projected point of V on the Spine. <br>
-//!          <Direction> is normal to <Spine>. <br>
-//!          <Spine> is a plane wire or a plane face. <br>
-  Standard_EXPORT   static  void Axe(const TopoDS_Shape& Spine,const TopoDS_Wire& Profile,gp_Ax3& AxeProf,Standard_Boolean& ProfOnSpine,const Standard_Real Tol) ;
-  //!  Compute ACR on a  wire <br>
-  Standard_EXPORT   static  void ComputeACR(const TopoDS_Wire& wire,TColStd_Array1OfReal& ACR) ;
-  //!  Insert ACR on a  wire <br>
-  Standard_EXPORT   static  TopoDS_Wire InsertACR(const TopoDS_Wire& wire,const TColStd_Array1OfReal& ACRcuts,const Standard_Real prec) ;
-
+  
+  //! Computes a ruled surface between two edges.
+  Standard_EXPORT static   TopoDS_Face Face (const TopoDS_Edge& Edge1, const TopoDS_Edge& Edge2) ;
+  
+  //! Computes a ruled surface between two wires.
+  //! The wires must have the same number of edges.
+  Standard_EXPORT static   TopoDS_Shell Shell (const TopoDS_Wire& Wire1, const TopoDS_Wire& Wire2) ;
+  
+  //! Computes  <AxeProf>  as Follow. <Location> is
+  //! the Position of the nearest vertex V  of <Profile>
+  //! to <Spine>.<XDirection> is confused with the tangent
+  //! to <Spine> at the projected point of V on the Spine.
+  //! <Direction> is normal to <Spine>.
+  //! <Spine> is a plane wire or a plane face.
+  Standard_EXPORT static   void Axe (const TopoDS_Shape& Spine, const TopoDS_Wire& Profile, gp_Ax3& AxeProf, Standard_Boolean& ProfOnSpine, const Standard_Real Tol) ;
+  
+  //! Compute ACR on a  wire
+  Standard_EXPORT static   void ComputeACR (const TopoDS_Wire& wire, TColStd_Array1OfReal& ACR) ;
+  
+  //! Insert ACR on a  wire
+  Standard_EXPORT static   TopoDS_Wire InsertACR (const TopoDS_Wire& wire, const TColStd_Array1OfReal& ACRcuts, const Standard_Real prec) ;
 
 
 
@@ -131,8 +123,9 @@ protected:
 
 private:
 
-  //! Computes origins and orientation on a closed wire <br>
-  Standard_EXPORT   static  void SearchOrigin(TopoDS_Wire& W,const gp_Pnt& P,const gp_Vec& V,const Standard_Real Tol) ;
+  
+  //! Computes origins and orientation on a closed wire
+  Standard_EXPORT static   void SearchOrigin (TopoDS_Wire& W, const gp_Pnt& P, const gp_Vec& V, const Standard_Real Tol) ;
 
 
 
@@ -155,8 +148,6 @@ friend class BRepFill_OffsetWire;
 friend class BRepFill_OffsetAncestors;
 friend class BRepFill_ListOfOffsetWire;
 friend class BRepFill_ApproxSeewing;
-friend class BRepFill_MultiLine;
-friend class BRepFill_MultiLineTool;
 friend class BRepFill_ComputeCLine;
 friend class BRepFill_TrimSurfaceTool;
 friend class BRepFill_TrimEdgeTool;
@@ -180,7 +171,6 @@ friend class BRepFill_SequenceOfFaceAndOrder;
 friend class BRepFill_SequenceOfEdgeFaceAndOrder;
 friend class BRepFill_ListNodeOfListOfOffsetWire;
 friend class BRepFill_ListIteratorOfListOfOffsetWire;
-friend class BRepFill_MyLeastSquareOfComputeCLine;
 friend class BRepFill_SequenceNodeOfSequenceOfSection;
 friend class BRepFill_DataMapNodeOfDataMapOfNodeDataMapOfShapeShape;
 friend class BRepFill_DataMapIteratorOfDataMapOfNodeDataMapOfShapeShape;
@@ -206,7 +196,6 @@ friend class BRepFill_SequenceNodeOfSequenceOfEdgeFaceAndOrder;
 
 
 
-// other Inline functions and methods (like "C++: function call" methods)
 
 
-#endif
+#endif // _BRepFill_HeaderFile

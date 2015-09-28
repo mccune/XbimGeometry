@@ -6,8 +6,11 @@
 #ifndef _BRepCheck_Status_HeaderFile
 #define _BRepCheck_Status_HeaderFile
 
+#include <Standard_PrimitiveTypes.hxx>
 
-enum BRepCheck_Status {
+
+enum BRepCheck_Status
+{
 BRepCheck_NoError,
 BRepCheck_InvalidPointOnCurve,
 BRepCheck_InvalidPointOnCurveOnSurface,
@@ -34,18 +37,17 @@ BRepCheck_IntersectingWires,
 BRepCheck_InvalidImbricationOfWires,
 BRepCheck_EmptyShell,
 BRepCheck_RedundantFace,
+BRepCheck_InvalidImbricationOfShells,
 BRepCheck_UnorientableShape,
 BRepCheck_NotClosed,
 BRepCheck_NotConnected,
 BRepCheck_SubshapeNotInShape,
 BRepCheck_BadOrientation,
 BRepCheck_BadOrientationOfSubshape,
+BRepCheck_InvalidPolygonOnTriangulation,
 BRepCheck_InvalidToleranceValue,
+BRepCheck_EnclosedRegion,
 BRepCheck_CheckFail
 };
 
-#ifndef _Standard_PrimitiveTypes_HeaderFile
-#include <Standard_PrimitiveTypes.hxx>
-#endif
-
-#endif
+#endif // _BRepCheck_Status_HeaderFile
